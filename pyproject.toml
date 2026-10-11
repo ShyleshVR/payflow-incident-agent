@@ -11,6 +11,8 @@ dependencies = [
     "httpx",
     # the MCP server (v2 API: MCPServer, formerly FastMCP)
     "mcp>=2",
+    # get_pod_status reads pods and events
+    "kubernetes",
 ]
 
 [project.optional-dependencies]
