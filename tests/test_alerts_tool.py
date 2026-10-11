@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 
+import httpx
 from mcp import Client
 
 from mcp_server import server as mcp_server_module
@@ -73,3 +74,20 @@ def test_the_tool_is_served_over_mcp(monkeypatch):
     assert set(tools.tools[0].output_schema["properties"]) == {"count", "alerts"}
     assert result.structured_content["count"] == 3
     assert result.structured_content["alerts"][0]["alert"] == "SagaRequiresAttention"
+
+
+def test_when_alertmanager_is_down_the_tool_says_so(monkeypatch):
+    async def unreachable():
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(alertmanager, "firing_alerts", unreachable)
+
+    async def call():
+        async with Client(mcp_server_module.server) as client:
+            return await client.call_tool("list_active_alerts", {})
+
+    result = asyncio.run(call())
+
+    assert result.is_error
+    assert "Alertmanager did not answer" in result.content[0].text
+    assert "ConnectError" in result.content[0].text
