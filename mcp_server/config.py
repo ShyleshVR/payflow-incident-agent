@@ -2,6 +2,7 @@
 import os
 
 ALERTMANAGER_URL = os.environ.get("ALERTMANAGER_URL", "http://localhost:9093")
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
 
 MCP_HOST = os.environ.get("MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MCP_PORT", "8091"))

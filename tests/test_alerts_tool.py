@@ -69,9 +69,9 @@ def test_the_tool_is_served_over_mcp(monkeypatch):
 
     tools, result = asyncio.run(call())
 
-    assert [t.name for t in tools.tools] == ["list_active_alerts"]
-    assert "firing in PayFlow right now" in tools.tools[0].description
-    assert set(tools.tools[0].output_schema["properties"]) == {"count", "alerts"}
+    tool = next(t for t in tools.tools if t.name == "list_active_alerts")
+    assert "firing in PayFlow right now" in tool.description
+    assert set(tool.output_schema["properties"]) == {"count", "alerts"}
     assert result.structured_content["count"] == 3
     assert result.structured_content["alerts"][0]["alert"] == "SagaRequiresAttention"
 
