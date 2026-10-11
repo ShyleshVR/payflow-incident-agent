@@ -9,6 +9,8 @@ dependencies = [
     "langchain-openai",
     "pydantic>=2",
     "httpx",
+    # the MCP server (v2 API: MCPServer, formerly FastMCP)
+    "mcp>=2",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +21,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["agent", "mcp_server", "api", "cli"]
+packages = ["agent", "mcp_server", "mcp_server.clients", "mcp_server.tools", "api", "cli"]
 
 [tool.ruff]
 line-length = 110
@@ -27,3 +29,4 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
