@@ -1,0 +1,29 @@
+[project]
+name = "payflow-incident-agent"
+version = "0.1.0"
+description = "An on-call agent for PayFlow: investigates alerts with a self-hosted model, proposes a fix, acts after approval."
+requires-python = ">=3.12"
+dependencies = [
+    # model plumbing (the model itself is llama.cpp's llama-server, OpenAI-compatible)
+    "langchain-core",
+    "langchain-openai",
+    "pydantic>=2",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["agent", "mcp_server", "api", "cli"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

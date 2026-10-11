@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# one JSON trace per investigation
+runs/
+
+# local settings and secrets
+.env
+*.sqlite
+*.sqlite-*
