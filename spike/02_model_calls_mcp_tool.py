@@ -31,7 +31,7 @@ llm = ChatOpenAI(
 )
 
 
-MAX_ROUNDS = 4  # a round = the model asks for tools, we run them and hand back the results
+MAX_ROUNDS = 6  # a round = the model asks for tools, we run them and hand back the results
 
 
 async def main(question: str) -> None:

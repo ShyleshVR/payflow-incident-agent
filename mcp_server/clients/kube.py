@@ -1,4 +1,4 @@
-"""The Kubernetes API, read-only: one workload, its pods and their warning events.
+"""The Kubernetes API, read-only: one workload, its pods, their warning events and their logs.
 
 Returns plain dicts, so the judgement in tools/pods.py can be tested without Kubernetes objects.
 The official client is blocking; calls run in a worker thread.
@@ -15,6 +15,8 @@ from kubernetes.client.exceptions import ApiException
 from mcp_server import config
 
 WARNING_WINDOW = timedelta(minutes=30)
+# per pod, so an error storm can't make one tool call read an unbounded log
+LOG_TAIL_LINES = 5000
 
 
 class KubeUnavailable(Exception):
@@ -59,6 +61,50 @@ def _snapshot(name: str, namespace: str) -> dict:
         "pods": [_pod_facts(pod) for pod in pods],
         "warnings": _warnings(events, pod_names | {name}, datetime.now(UTC) - WARNING_WINDOW),
     }
+
+
+async def logs(name: str, since: timedelta, namespace: str | None = None) -> list[dict]:
+    """The recent log text of each pod of the workload: [{"pod", "crashed", "text"}, ...].
+    A pod whose container died inside the window also gives the log of the instance that died
+    ("crashed": True): a crash-looping container's own log often shows nothing but its startup."""
+    return await asyncio.to_thread(_logs, name, since, namespace or config.NAMESPACE)
+
+
+def _logs(name: str, since: timedelta, namespace: str) -> list[dict]:
+    try:
+        core, _ = _apis()
+        pods = core.list_namespaced_pod(namespace, label_selector=f"app={name}").items
+        texts = []
+        for pod in pods:
+            container = pod.spec.containers[0].name
+            for crashed in _instances_to_read(pod, datetime.now(UTC) - since):
+                text = _read_log(core, pod.metadata.name, namespace, container, since, previous=crashed)
+                if text is not None:
+                    texts.append({"pod": pod.metadata.name, "crashed": crashed, "text": text})
+        return texts
+    except (ApiException, urllib3.exceptions.HTTPError, kube_config.ConfigException) as e:
+        reason = f"HTTP {e.status} {e.reason}" if isinstance(e, ApiException) else type(e).__name__
+        raise KubeUnavailable(reason) from e
+
+
+def _instances_to_read(pod, window_start: datetime) -> list[bool]:
+    """False: the running container. True as well: the one before it, if it died in the window."""
+    exits = [status.last_state.terminated.finished_at for status in pod.status.container_statuses or []
+             if status.last_state and status.last_state.terminated and status.last_state.terminated.finished_at]
+    return [False, True] if any(at >= window_start for at in exits) else [False]
+
+
+def _read_log(core: client.CoreV1Api, pod: str, namespace: str, container: str, since: timedelta,
+              previous: bool) -> str | None:
+    try:
+        return core.read_namespaced_pod_log(
+            pod, namespace, container=container, previous=previous,
+            since_seconds=max(1, int(since.total_seconds())), tail_lines=LOG_TAIL_LINES)
+    except ApiException as e:
+        if e.status == 400:
+            # no log to read yet: the container is still being created, or has no earlier instance
+            return None
+        raise
 
 
 def _workload(apps: client.AppsV1Api, name: str, namespace: str) -> dict | None:

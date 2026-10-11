@@ -3,6 +3,7 @@
 Run:  .venv\\Scripts\\python.exe -m mcp_server.server     (http://127.0.0.1:8091/mcp)
 """
 from contextlib import contextmanager
+from datetime import timedelta
 
 import httpx
 from mcp.server.mcpserver import MCPServer
@@ -10,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import config
 from mcp_server.clients import alertmanager, kube, prometheus
-from mcp_server.tools import alerts, health, pods
+from mcp_server.tools import alerts, health, logs, pods
 
 server = MCPServer(
     "payflow",
@@ -63,6 +64,19 @@ async def get_pod_status(workload: pods.Workload) -> pods.PodStatus:
     with reaching("Kubernetes", f"namespace {config.NAMESPACE}"):
         snapshot = await kube.snapshot(workload)
     return pods.assess(workload, snapshot, alerts.utc_now())
+
+
+@server.tool()
+async def get_recent_errors(workload: logs.LogWorkload, minutes: int = logs.DEFAULT_MINUTES) -> logs.RecentErrors:
+    """The WARN and ERROR lines a workload logged recently, grouped: each group has one example
+    message, the root cause from its stack trace, how many times and on how many pods it was
+    logged, and how long ago. Errors come first. Covers the services, kafka and postgres.
+    `minutes` is how far back to read (default 15, at most 120): widen it for an alert that has
+    been firing longer. Use it to find out why a service is failing once you know which one."""
+    minutes = logs.clamp_minutes(minutes)
+    with reaching("Kubernetes", f"namespace {config.NAMESPACE}"):
+        pod_logs = await kube.logs(workload, timedelta(minutes=minutes))
+    return logs.summarise(workload, minutes, pod_logs, alerts.utc_now())
 
 
 if __name__ == "__main__":
