@@ -2,6 +2,7 @@
 
 Run:  .venv\\Scripts\\python.exe -m mcp_server.server     (http://127.0.0.1:8091/mcp)
 """
+import asyncio
 from contextlib import contextmanager
 from datetime import timedelta
 
@@ -10,8 +11,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import config
-from mcp_server.clients import alertmanager, kube, prometheus
-from mcp_server.tools import alerts, dependencies, health, logs, messaging, pods
+from mcp_server.clients import alertmanager, kube, payflow, prometheus
+from mcp_server.tools import alerts, dependencies, health, logs, messaging, pods, reconciliation, sagas
 
 server = MCPServer(
     "payflow",
@@ -25,8 +26,8 @@ def reaching(source: str, url: str):
     other exception's text is hidden from clients."""
     try:
         yield
-    except (httpx.HTTPError, kube.KubeUnavailable) as e:
-        why = str(e) if isinstance(e, kube.KubeUnavailable) else type(e).__name__
+    except (httpx.HTTPError, kube.KubeUnavailable, payflow.PayflowUnavailable) as e:
+        why = type(e).__name__ if isinstance(e, httpx.HTTPError) else str(e)
         raise ToolError(f"{source} did not answer at {url} ({why}). This fact is unavailable; it "
                         "says nothing about PayFlow itself.") from e
 
@@ -108,6 +109,85 @@ async def get_dependency_status(minutes: int = dependencies.DEFAULT_MINUTES) -> 
     with reaching("Prometheus", config.PROMETHEUS_URL):
         values = await prometheus.vectors(dependencies.queries(minutes))
     return dependencies.assess(minutes, values)
+
+
+async def _or_none(call):
+    """One of several sources not answering must not hide what the others say."""
+    try:
+        return await call
+    except httpx.HTTPError:
+        return None
+
+
+@server.tool()
+async def list_sagas_needing_attention() -> sagas.SagasNeedingAttention:
+    """The payment, refund and payout sagas that need a look right now. A saga is PayFlow's
+    step-by-step record of one money movement. Two kinds are listed: parked (it stopped at an
+    outcome that must not be guessed, such as an unanswered capture, and waits for an operator's
+    retry) and stuck (still running, but over 15 minutes in the same step). Each has the id of
+    its payment or payout, the step it stopped in, for how long, and its last error. Use it for
+    the alerts SagaRequiresAttention and SagaStepStuck, or when money movements hang; then call
+    get_saga with an id from the list. `concerns` lists what needs attention; empty means none."""
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        payments, payouts = await asyncio.gather(_or_none(payflow.get(sagas.PAYMENTS_LIST, sagas.LIST_PARAMS)),
+                                                 _or_none(payflow.get(sagas.PAYOUTS_LIST, sagas.LIST_PARAMS)))
+    if payments is None and payouts is None:
+        raise ToolError(f"Neither payment-service nor payout-service answered through PayFlow's gateway at "
+                        f"{config.PAYFLOW_URL}. Whether sagas need attention is unknown; check the gateway and both services.")
+    return sagas.summarise(payments, payouts)
+
+
+@server.tool()
+async def get_saga(id: str) -> sagas.SagaDetail:
+    """One payment's or payout's saga in detail: its state, the step it stopped in and why (last
+    error, failure code), its most recent step outcomes with their times, and the status and
+    amount the merchant sees. `id` is a payment id (pay_...) or a payout id (po_...), as
+    list_sagas_needing_attention returns them. For a payment with a refund, the unfinished saga
+    is shown. Use it to find out why one money movement is parked or stuck."""
+    try:
+        saga_path, lookup_path, lookup_body = sagas.paths(id)
+    except ValueError as e:
+        raise ToolError(str(e)) from e
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        try:
+            saga_view = await payflow.get(saga_path)
+        except payflow.NotFound as e:
+            raise ToolError(f"PayFlow has no payment or payout with the id {id}.") from e
+        except payflow.BadRequest as e:
+            raise ToolError(f"PayFlow does not accept {id} as an id: after pay_ or po_ it must be the full id, "
+                            "exactly as list_sagas_needing_attention returns it.") from e
+        # the status is a bonus: the saga is still worth showing without it
+        looked_up = await _or_none(payflow.post(lookup_path, lookup_body)) or []
+    try:
+        return sagas.detail(id, saga_view, looked_up, alerts.utc_now())
+    except LookupError as e:
+        raise ToolError(str(e)) from e
+
+
+@server.tool()
+async def get_reconciliation(date: str | None = None) -> reconciliation.Reconciliation:
+    """PayFlow's daily reconciliation, which compares the card processor and the bank, the ledger
+    and the statuses told to merchants for each business day (UTC), and reports every
+    disagreement as a discrepancy. Returns the last 7 days at a glance (clean, discrepancies,
+    failed, running, not reconciled) and one day in detail: its counts, each discrepancy type
+    with its count and up to 3 examples (payment or payout id, both amounts, status, what is
+    wrong), and the error of a failed run. `date` (YYYY-MM-DD) picks the day shown in detail;
+    without it, the newest day that is not clean. Use it for the alerts
+    ReconciliationDiscrepancies, ReconciliationRunFailed and ReconciliationNotRun. `concerns`
+    lists what looks wrong; empty means every day is reconciled and clean."""
+    now = alerts.utc_now()
+    try:
+        asked = reconciliation.parse_date(date, now.date())
+    except ValueError as e:
+        raise ToolError(str(e)) from e
+    days = reconciliation.days_to_read(now.date(), asked)
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        answers = await asyncio.gather(*(payflow.get(reconciliation.RUNS, {"date": day.isoformat()}) for day in days))
+        runs_by_day = dict(zip(days, answers, strict=True))
+        shown = reconciliation.choose(runs_by_day, asked, now)
+        run_id = reconciliation.run_to_read(runs_by_day[shown])
+        discrepancies = None if run_id is None else (await payflow.get(f"{reconciliation.RUNS}/{run_id}"))["discrepancies"]
+    return reconciliation.build(runs_by_day, shown, discrepancies, now)
 
 
 if __name__ == "__main__":
