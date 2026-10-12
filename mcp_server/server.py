@@ -11,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import config
 from mcp_server.clients import alertmanager, kube, prometheus
-from mcp_server.tools import alerts, health, logs, messaging, pods
+from mcp_server.tools import alerts, dependencies, health, logs, messaging, pods
 
 server = MCPServer(
     "payflow",
@@ -92,6 +92,22 @@ async def get_messaging_status(minutes: int = messaging.DEFAULT_MINUTES) -> mess
     with reaching("Prometheus", config.PROMETHEUS_URL):
         values = await prometheus.vectors(messaging.queries(minutes))
     return messaging.assess(minutes, values)
+
+
+@server.tool()
+async def get_dependency_status(minutes: int = dependencies.DEFAULT_MINUTES) -> dependencies.DependencyStatus:
+    """The two outside partners PayFlow depends on: the card processor (called by payment-service)
+    and the bank (called by payout-service). For each: how many calls were made in the last
+    `minutes` (default 15, at most 120) and how they ended, in total and per operation:
+    succeeded, declined (a business "no"; the partner is working), rejected (our request was
+    wrong) or unanswered (timeout, connection failure, 5xx), with the average time. Also the
+    processor circuit breaker: its state now, whether it opened in the window and how many
+    calls it refused. Use it for alerts about the circuit breaker, stuck saga steps or failing
+    payouts, to tell a partner outage from a PayFlow fault. `concerns` lists what looks wrong."""
+    minutes = dependencies.clamp_minutes(minutes)
+    with reaching("Prometheus", config.PROMETHEUS_URL):
+        values = await prometheus.vectors(dependencies.queries(minutes))
+    return dependencies.assess(minutes, values)
 
 
 if __name__ == "__main__":
