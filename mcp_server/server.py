@@ -11,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import config
 from mcp_server.clients import alertmanager, kube, prometheus
-from mcp_server.tools import alerts, health, logs, pods
+from mcp_server.tools import alerts, health, logs, messaging, pods
 
 server = MCPServer(
     "payflow",
@@ -77,6 +77,21 @@ async def get_recent_errors(workload: logs.LogWorkload, minutes: int = logs.DEFA
     with reaching("Kubernetes", f"namespace {config.NAMESPACE}"):
         pod_logs = await kube.logs(workload, timedelta(minutes=minutes))
     return logs.summarise(workload, minutes, pod_logs, alerts.utc_now())
+
+
+@server.tool()
+async def get_messaging_status(minutes: int = messaging.DEFAULT_MINUTES) -> messaging.MessagingStatus:
+    """Whether messages are flowing between the services: whether Kafka can be reached, how far
+    each consumer is behind on each topic (lag) and whether anyone is reading it, each service's
+    outbox (messages waiting to be published, the oldest one's age, parked messages), and the
+    dead-letter topics that received messages. `change` compares with `minutes` ago (default 15,
+    at most 120), so a backlog that is draining can be told from one that is growing. Use it
+    for alerts about lag, outbox backlog or dead letters, and when payments or payouts are slow
+    although every service is up. `concerns` lists what looks wrong; empty means messages flow."""
+    minutes = messaging.clamp_minutes(minutes)
+    with reaching("Prometheus", config.PROMETHEUS_URL):
+        values = await prometheus.vectors(messaging.queries(minutes))
+    return messaging.assess(minutes, values)
 
 
 if __name__ == "__main__":

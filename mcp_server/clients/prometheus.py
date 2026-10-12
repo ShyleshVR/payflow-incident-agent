@@ -1,4 +1,4 @@
-"""Prometheus' HTTP API: instant queries."""
+"""Prometheus' HTTP API: instant queries, as one number or as labelled rows."""
 import asyncio
 import math
 
@@ -23,3 +23,18 @@ async def _one(client: httpx.AsyncClient, promql: str) -> float | None:
         return None
     value = float(result[0]["value"][1])
     return None if math.isnan(value) else value  # 0 / 0 on an idle service is "no data" too
+
+
+async def vectors(queries: dict[str, str]) -> dict[str, list[tuple[dict[str, str], float]]]:
+    """Runs the named queries concurrently and keeps every series of each: (labels, value) rows,
+    for queries grouped "by (...)". No data gives an empty list; NaN rows are dropped."""
+    async with httpx.AsyncClient(base_url=config.PROMETHEUS_URL, timeout=5) as client:
+        rows = await asyncio.gather(*(_rows(client, promql) for promql in queries.values()))
+    return dict(zip(queries, rows, strict=True))
+
+
+async def _rows(client: httpx.AsyncClient, promql: str) -> list[tuple[dict[str, str], float]]:
+    response = await client.get("/api/v1/query", params={"query": promql})
+    response.raise_for_status()
+    rows = [(series["metric"], float(series["value"][1])) for series in response.json()["data"]["result"]]
+    return [(labels, value) for labels, value in rows if not math.isnan(value)]
