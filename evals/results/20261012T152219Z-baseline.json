@@ -1,0 +1,98 @@
+{
+  "id": "20261012T152219Z-baseline",
+  "label": "baseline",
+  "started_at": "2026-10-12T15:22:19Z",
+  "model": "qwen3.5-9b",
+  "agent_version": "23921ac with uncommitted changes",
+  "fingerprints": {
+    "prompts": "e0a3de34",
+    "ProcessorCircuitOpen.md": "f1e0f5fb"
+  },
+  "totals": {
+    "scenarios": 2,
+    "passed": 2,
+    "cause_right": 2,
+    "citations_verified": 2,
+    "key_check_cited": 2,
+    "errors": 0,
+    "seconds": 27.8,
+    "avg_rounds": 3.0,
+    "avg_checks": 5.5,
+    "input_tokens": 13096,
+    "output_tokens": 1737
+  },
+  "scenarios": [
+    {
+      "scenario": "processor-not-running",
+      "expected": [
+        "processor_not_running"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "processor_not_running",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "citations": 3,
+      "unverified": 0,
+      "cited_checks": [
+        "processor_pods",
+        "processor_health",
+        "processor_errors"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 4,
+      "checks_run": [
+        "processor_calls",
+        "processor_pods",
+        "processor_health",
+        "processor_errors",
+        "payment_service_health",
+        "payment_service_errors",
+        "database"
+      ],
+      "stopped_because": "the limit of 4 rounds was reached",
+      "seconds": 17.1,
+      "model_calls": 5,
+      "input_tokens": 7591,
+      "output_tokens": 1088,
+      "trace": "20261012T152219Z-ProcessorCircuitOpen"
+    },
+    {
+      "scenario": "processor-outage",
+      "expected": [
+        "processor_outage"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "processor_outage",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "citations": 2,
+      "unverified": 0,
+      "cited_checks": [
+        "processor_health",
+        "processor_errors"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 2,
+      "checks_run": [
+        "processor_calls",
+        "processor_pods",
+        "processor_health",
+        "processor_errors"
+      ],
+      "stopped_because": "the model had seen enough",
+      "seconds": 10.7,
+      "model_calls": 4,
+      "input_tokens": 5505,
+      "output_tokens": 649,
+      "trace": "20261012T152236Z-ProcessorCircuitOpen"
+    }
+  ]
+}

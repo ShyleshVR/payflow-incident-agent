@@ -1,0 +1,16 @@
+name: processor-crash-loop
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-processor-crash-loop.json
+description: >
+  The card processor's pods crashed as soon as they started (a start command that exits at
+  once) while about 5 payments a second were being made. Kubernetes kept restarting them; none
+  ever became ready. The same cause as processor-not-running, shown by other evidence: the
+  pods are wanted and exist, in CrashLoopBackOff.
+caused_by: >
+  evals/faults/traffic.sh, then evals/faults/processor-crash-loop.sh start.
+  Recorded on 2026-10-13, as the alert began to fire (the pods had restarted 4 times by then).
+cleaned_up_by: evals/faults/processor-crash-loop.sh stop
+expected:
+  root_causes: [processor_not_running]
+  # The pod status says CrashLoopBackOff for both pods, and its health shows no instance up.
+  key_checks: [processor_pods, processor_health]

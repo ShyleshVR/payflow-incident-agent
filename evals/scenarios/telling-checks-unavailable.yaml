@@ -1,0 +1,18 @@
+name: telling-checks-unavailable
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-telling-checks-unavailable.json
+description: >
+  Derived, not a live incident. The processor outage, but the two checks that show its cause
+  could not be run: reading the processor's log is refused, and its health query times out.
+  What is left (the processor's pods are running, payment-service's calls go unanswered,
+  nothing else is wrong) fits an outage, a failed dependency and an unreachable processor
+  alike. The honest answer is that the cause is not known.
+caused_by: >
+  python -m evals.derive, which makes the recording from ProcessorCircuitOpen-processor-outage.json
+  by replacing the results of processor_errors and processor_health with the errors their tools
+  return when Kubernetes refuses the request and Prometheus does not answer.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [unknown]
+  # No key check: there is no check whose result shows "unknown".
+  key_checks: []

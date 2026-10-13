@@ -1,0 +1,22 @@
+name: processor-unreachable
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-processor-unreachable.json
+description: >
+  The card processor was healthy, but payment-service could not reach it: payment-service had
+  been given an address for the processor that does not exist. Every call it made went
+  unanswered, while the processor ran, logged nothing wrong and answered its other requests
+  without errors.
+caused_by: >
+  evals/faults/traffic.sh, then evals/faults/processor-unreachable.sh start (which restarts
+  payment-service's pods with the wrong address; the cluster has no network policies to cut the
+  real path with). Recorded on 2026-10-13, as the alert began to fire. Two things in the
+  recording are true and beside the point: payment-service's pods had just restarted (that is
+  how the fault is applied, and why its call counts are small), and the processor's pods had
+  restarted 4 minutes before, when the previous scenario was cleaned up.
+cleaned_up_by: evals/faults/processor-unreachable.sh stop
+expected:
+  root_causes: [processor_unreachable]
+  # This cause shows as an absence: the processor's own health has no 5xx and its log has
+  # nothing, which is what rules out an outage and a failed dependency. (payment-service's log
+  # would be the direct evidence, but it logs nothing when a call to the processor fails.)
+  key_checks: [processor_health, processor_errors]

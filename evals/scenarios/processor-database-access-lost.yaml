@@ -1,0 +1,19 @@
+name: processor-database-access-lost
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-processor-database-access-lost.json
+description: >
+  The card processor lost the use of its database while about 5 payments a second were being
+  made: its database login was locked and its open connections dropped. Its pods kept running,
+  and every request that needed the database failed or waited for a connection. Postgres itself
+  stayed healthy.
+caused_by: >
+  evals/faults/traffic.sh, then evals/faults/processor-database-access-lost.sh start.
+  Recorded on 2026-10-13, as the alert began to fire. The cluster had been started a few minutes
+  before, so the processor's pods show start-up probe warnings from then: true, and beside the point.
+cleaned_up_by: evals/faults/processor-database-access-lost.sh stop
+expected:
+  root_causes: [processor_dependency_down]
+  # The processor's log names the database login it may no longer use, and its health shows
+  # requests waiting for a database connection. (The database check finds Postgres healthy,
+  # which it is: the pod is fine, the login is not. It shows nothing of the cause.)
+  key_checks: [processor_errors, processor_health]

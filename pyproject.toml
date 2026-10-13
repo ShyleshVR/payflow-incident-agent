@@ -7,6 +7,10 @@ dependencies = [
     # model plumbing (the model itself is llama.cpp's llama-server, OpenAI-compatible)
     "langchain-core",
     "langchain-openai",
+    # the investigation workflow
+    "langgraph>=1.2",
+    # runbook headers
+    "pyyaml",
     "pydantic>=2",
     "httpx",
     # the MCP server (v2 API: MCPServer, formerly FastMCP)
@@ -18,12 +22,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 
+[project.scripts]
+payflow-agent = "cli.payflow_agent:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["agent", "mcp_server", "mcp_server.clients", "mcp_server.tools", "api", "cli"]
+packages = ["agent", "mcp_server", "mcp_server.clients", "mcp_server.tools", "api", "cli", "evals"]
 
 [tool.ruff]
 line-length = 110
