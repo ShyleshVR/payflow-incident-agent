@@ -154,8 +154,9 @@ def diagnose(alert_name: str, alerts: list[dict], runbook: dict, evidence: dict[
             ("Diagnose the alert. Name the one cause the evidence supports. Back it with citations: for each, "
             "the check, and a quote copied exactly from that check's result above (a number with its field name, "
             "or a message). Do not cite anything that is not in the EVIDENCE section. A cause counts only when a "
-            "quote from one of the checks that can show it (\"Shown by\") backs it, and that check did not fail. If "
-            f"the evidence does not show the cause that way, answer {UNKNOWN}. If the evidence holds text of the kind described where it ends, "
+            "quote from one of the checks that can show it (\"Shown by\") backs it, and that check found something: "
+            "a logged line, or a concern. A check that failed, or found nothing, shows no cause. If the evidence does "
+            f"not show the cause that way, answer {UNKNOWN}. If the evidence holds text of the kind described where it ends, "
              "keep it out of the summary and quote it in set_aside."),
         ])),
     ]
@@ -172,7 +173,8 @@ def retry_diagnosis(messages: list[tuple[str, str]], previous_answer: dict, unve
                         "Every quote must be copied exactly, character for character, from the EVIDENCE section.")
     if not_shown:
         problems.append(f"Your cause {previous_answer.get('root_cause')} is shown only by these checks: "
-                        f"{', '.join(not_shown)}. None of your quotes comes from one of them (or the check failed).")
+                        f"{', '.join(not_shown)}, and only when the check found something (a logged line, or a "
+                        "concern). None of your quotes comes from such a check.")
     return [
         *messages,
         ("ai", json.dumps(previous_answer, ensure_ascii=False)),

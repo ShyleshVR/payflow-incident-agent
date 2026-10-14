@@ -354,7 +354,8 @@ def test_a_cause_must_be_quoted_from_a_check_that_can_show_it_or_it_is_unknown(t
                                       "processor_health")
     # the second question says why
     retry = model.diagnosing[1][0][-1][1]
-    assert "Your cause processor_outage is shown only by these checks: processor_errors, processor_health." in retry
+    assert "Your cause processor_outage is shown only by these checks: processor_errors, processor_health, and only " \
+           "when the check found something" in retry
     assert "unknown is a correct answer when the evidence does not show the cause" in retry
     # and the first already told it which checks show which cause
     first = model.diagnosing[0][0][1][1]
@@ -373,3 +374,23 @@ def test_a_quote_from_a_failed_check_does_not_show_a_cause():
     assert diagnosis.not_shown(answer, [cite("processor_errors", "Simulated outage set to 240s")], evidence, runbook) == ()
     # a cause without the rule, and unknown, are never held back by it
     assert diagnosis.not_shown({"root_cause": "unknown"}, [], evidence, runbook) == ()
+
+
+def test_a_check_that_can_show_a_cause_shows_nothing_when_it_found_nothing():
+    runbook = {"causes": [{"name": "processor_outage", "shown_by": ["processor_errors", "processor_health"]}]}
+    quiet_log = {"tool": "get_recent_errors", "is_error": False,
+                 "result": {"workload": "processor-simulator", "error_lines": 0, "warning_lines": 0, "groups": [], "concerns": []}}
+    healthy = {"tool": "get_service_health", "is_error": False, "result": {"server_error_percent": 0.0, "concerns": []}}
+    evidence = {"processor_errors": quiet_log, "processor_health": healthy}
+    nothing = [cite("processor_errors", "error_lines: 0"), cite("processor_health", "server_error_percent: 0.0")]
+
+    # the loophole found on a held-out scenario: an outage "shown" by a log with nothing in it
+    assert diagnosis.not_shown({"root_cause": "processor_outage"}, nothing, evidence, runbook) == ("processor_errors", "processor_health")
+    # a warning is enough (an outage being switched on is logged as one), and so is a concern
+    evidence["processor_errors"] = {"tool": "get_recent_errors", "is_error": False, "result": ERRORS}
+    assert diagnosis.not_shown({"root_cause": "processor_outage"}, [cite("processor_errors", "Simulated outage set to 240s")],
+                               evidence, runbook) == ()
+    evidence["processor_health"] = {"is_error": False, "result": {"server_error_percent": 19.7, "concerns": ["19.7% of requests fail with a 5xx"]}}
+    assert diagnosis.not_shown({"root_cause": "processor_outage"}, [cite("processor_health", "server_error_percent: 19.7")],
+                               evidence, runbook) == ()
+    assert [diagnosis.found_something(item) for item in (quiet_log, healthy, {"is_error": True, "result": "timed out"})] == [False] * 3

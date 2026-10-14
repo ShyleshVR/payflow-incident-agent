@@ -7,13 +7,15 @@ causes:
   processor_dependency_down: The processor is running but cannot work because something it needs is down, typically its database.
   processor_unreachable: The processor looks healthy by its own pods, health and log, but payment-service cannot reach it or times out calling it.
 # For each cause, the checks whose result can show it. A diagnosis must quote one of them, from a
-# check that ran without failing; otherwise the cause is not reported and the answer is unknown.
-# processor_calls is in none: calls go unanswered whatever the cause.
+# check that found something (a logged line, or a concern); otherwise the cause is not reported
+# and the answer is unknown. processor_calls is in none: calls go unanswered whatever the cause.
+# processor_unreachable is shown by payment-service's own log, which names each failed call
+# (since PayFlow logs them): the processor's checks can only show that nothing is wrong there.
 shown_by:
   processor_outage: [processor_errors, processor_health]
   processor_not_running: [processor_pods, processor_health]
   processor_dependency_down: [processor_errors, processor_health, database]
-  processor_unreachable: [processor_health, processor_errors, payment_service_errors]
+  processor_unreachable: [payment_service_errors]
 checks:
   processor_calls:
     tool: get_dependency_status

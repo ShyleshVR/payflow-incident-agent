@@ -87,10 +87,22 @@ def _plain(text: str) -> str:
 
 def not_shown(answer: dict, verified: list[dict], evidence: dict[str, dict], runbook: dict) -> tuple[str, ...]:
     """The checks that can show the answer's cause, when none of the verified quotes comes from
-    one of them that ran without failing; empty when the cause is shown (or has no such rule)."""
+    one of them that ran and found something (see found_something); empty when the cause is
+    shown (or has no such rule). A check that can show a cause shows nothing when it found nothing:
+    "error_lines: 0" from the processor's log is no evidence of an outage."""
     shown_by = next((tuple(cause.get("shown_by", ())) for cause in runbook["causes"] if cause["name"] == answer["root_cause"]), ())
-    shown = any(citation["check"] in shown_by and not evidence[citation["check"]].get("is_error") for citation in verified)
+    shown = any(citation["check"] in shown_by and found_something(evidence[citation["check"]]) for citation in verified)
     return () if not shown_by or shown else shown_by
+
+
+def found_something(item: dict) -> bool:
+    """Whether a check's result has anything in it to show a cause: for a log check, a logged line
+    (a warning is enough: an outage being switched on is one); for any other, a concern the tool
+    raised. A failed check found nothing."""
+    result = item.get("result")
+    if item.get("is_error") or not isinstance(result, dict):
+        return False
+    return bool(result.get("groups")) if "groups" in result else bool(result.get("concerns"))
 
 
 def conclude(answer: dict, verified: list[dict], unverified: list[dict], attempts: int, missing: tuple[str, ...] = ()) -> dict:

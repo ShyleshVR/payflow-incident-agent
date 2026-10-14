@@ -195,7 +195,7 @@ def test_a_runbook_says_which_checks_can_show_each_cause():
     assert shown_by == {"processor_outage": ("processor_errors", "processor_health"),
                         "processor_not_running": ("processor_pods", "processor_health"),
                         "processor_dependency_down": ("processor_errors", "processor_health", "database"),
-                        "processor_unreachable": ("processor_health", "processor_errors", "payment_service_errors")}
+                        "processor_unreachable": ("payment_service_errors",)}
     assert list(loaded.as_dict()["causes"][0]["shown_by"]) == ["processor_errors", "processor_health"]
 
 
