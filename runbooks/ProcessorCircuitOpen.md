@@ -16,6 +16,10 @@ shown_by:
   processor_not_running: [processor_pods, processor_health]
   processor_dependency_down: [processor_errors, processor_health, database]
   processor_unreachable: [payment_service_errors]
+# Checks that must have run and found nothing for a cause to stand. payment-service logs its failed
+# calls whatever the cause, so they mean "unreachable" only while the processor itself looks fine.
+requires_clear:
+  processor_unreachable: [processor_pods, processor_health]
 checks:
   processor_calls:
     tool: get_dependency_status

@@ -32,26 +32,6 @@
       "step": "gather",
       "tool_calls": [
         {
-          "tool": "get_pod_status",
-          "arguments": {
-            "workload": "processor-simulator"
-          },
-          "is_error": false,
-          "result": {
-            "workload": "processor-simulator",
-            "kind": "Deployment",
-            "pods_wanted": 2,
-            "pods_ready": 2,
-            "healthy_pods": 2,
-            "unhealthy_pods": [],
-            "recent_warnings": [
-              "Unhealthy x6, 7 min ago: Startup probe failed: Get \"http://10.1.3.21:8086/actuator/health/liveness\": dial tcp 10.1.3.21:8086: connect: connection refused",
-              "Unhealthy x6, 7 min ago: Startup probe failed: Get \"http://10.1.3.20:8086/actuator/health/liveness\": dial tcp 10.1.3.20:8086: connect: connection refused"
-            ],
-            "concerns": []
-          }
-        },
-        {
           "tool": "get_dependency_status",
           "arguments": {
             "minutes": 15
@@ -61,49 +41,49 @@
             "minutes": 15,
             "processor": {
               "called_by": "payment-service",
-              "calls": 3339,
-              "succeeded": 137,
+              "calls": 2780,
+              "succeeded": 164,
               "declined": 0,
               "rejected": 0,
-              "unanswered": 3202,
-              "unanswered_percent": 95.9,
-              "avg_ms": 113,
+              "unanswered": 2616,
+              "unanswered_percent": 94.1,
+              "avg_ms": 88,
               "operations": [
                 {
                   "operation": "authorize",
-                  "calls": 3262,
-                  "succeeded": 69,
+                  "calls": 2697,
+                  "succeeded": 81,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 3193,
-                  "avg_ms": 115
+                  "unanswered": 2616,
+                  "avg_ms": 90
                 },
                 {
                   "operation": "capture",
-                  "calls": 72,
-                  "succeeded": 68,
+                  "calls": 81,
+                  "succeeded": 81,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 4,
-                  "avg_ms": 10
+                  "unanswered": 0,
+                  "avg_ms": 4
                 },
                 {
                   "operation": "refund",
-                  "calls": 5,
-                  "succeeded": 0,
+                  "calls": 2,
+                  "succeeded": 2,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 5,
-                  "avg_ms": 0
+                  "unanswered": 0,
+                  "avg_ms": null
                 }
               ]
             },
             "processor_circuit_breaker": {
               "state": "open",
-              "instances": 4,
-              "instances_not_closed": 4,
+              "instances": 2,
+              "instances_not_closed": 2,
               "opened_in_window": true,
-              "calls_refused": 2897,
+              "calls_refused": 2578,
               "recent_failure_percent": 100
             },
             "bank": {
@@ -118,11 +98,33 @@
               "operations": []
             },
             "concerns": [
-              "the processor circuit breaker is open on 4 of 4 payment-service instance(s): calls to the processor are refused without being sent; it refused 2897 call(s) in the last 15 minutes",
-              "3202 of 3339 calls to the processor (95.9%) got no answer to trust in the last 15 minutes (authorize 3193, capture 4, refund 5)"
+              "the processor circuit breaker is open on 2 of 2 payment-service instance(s): calls to the processor are refused without being sent; it refused 2578 call(s) in the last 15 minutes",
+              "2616 of 2780 calls to the processor (94.1%) got no answer to trust in the last 15 minutes (authorize 2616)"
             ]
           }
         },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "processor-simulator"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
         {
           "tool": "get_service_health",
           "arguments": {
@@ -130,6 +132,74 @@
           },
           "is_error": true,
           "result": "Prometheus did not answer at http://localhost:9090 (ReadTimeout). This fact is unavailable; it says nothing about PayFlow itself."
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 96,
+            "groups": [
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN unreachable: HttpTimeoutException: Request cancelled",
+                "cause": null,
+                "count": 69,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from HALF_OPEN to OPEN",
+                "cause": null,
+                "count": 12,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from OPEN to HALF_OPEN",
+                "cause": null,
+                "count": 12,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from CLOSED to OPEN",
+                "cause": null,
+                "count": 2,
+                "pods": 2,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN 500 internal_error: Unexpected processor error",
+                "cause": null,
+                "count": 1,
+                "pods": 1,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": []
+          }
         }
       ]
     },
@@ -154,20 +224,6 @@
           }
         },
         {
-          "tool": "get_recent_errors",
-          "arguments": {
-            "workload": "processor-simulator",
-            "minutes": 15
-          },
-          "is_error": true,
-          "result": "Kubernetes did not answer at namespace payflow (HTTP 403 Forbidden). This fact is unavailable; it says nothing about PayFlow itself."
-        }
-      ]
-    },
-    {
-      "step": "gather",
-      "tool_calls": [
-        {
           "tool": "list_sagas_needing_attention",
           "arguments": {},
           "is_error": false,
@@ -188,23 +244,13 @@
       "step": "gather",
       "tool_calls": [
         {
-          "tool": "get_service_health",
+          "tool": "get_recent_errors",
           "arguments": {
-            "service": "payment-service"
+            "workload": "processor-simulator",
+            "minutes": 15
           },
-          "is_error": false,
-          "result": {
-            "service": "payment-service",
-            "instances_up": 4,
-            "instances_expected": 4,
-            "minutes_since_last_start": 6,
-            "requests_per_second": 5.29,
-            "server_error_percent": 0.0,
-            "avg_response_ms": 7,
-            "db_connections_waiting": 0,
-            "cpu_cores_used": 0.35,
-            "concerns": []
-          }
+          "is_error": true,
+          "result": "Kubernetes did not answer at namespace payflow (HTTP 403 Forbidden). This fact is unavailable; it says nothing about PayFlow itself."
         }
       ]
     },
@@ -212,19 +258,21 @@
       "step": "record_unchosen",
       "tool_calls": [
         {
-          "tool": "get_recent_errors",
+          "tool": "get_service_health",
           "arguments": {
-            "workload": "payment-service",
-            "minutes": 15
+            "service": "payment-service"
           },
           "is_error": false,
           "result": {
-            "workload": "payment-service",
-            "minutes": 15,
-            "pods_read": 4,
-            "error_lines": 0,
-            "warning_lines": 0,
-            "groups": [],
+            "service": "payment-service",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 18,
+            "requests_per_second": 5.46,
+            "server_error_percent": 0.0,
+            "avg_response_ms": 5,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.2,
             "concerns": []
           }
         }

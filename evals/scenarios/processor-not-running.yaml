@@ -5,9 +5,9 @@ description: >
   The card processor's deployment was scaled to zero replicas while about 5 payments a second
   were being made. There was no pod to answer payment-service's calls.
 caused_by: >
-  In PayFlow: scripts/load-test.sh step 5 5m, then
-  kubectl -n payflow scale deployment processor-simulator --replicas=0.
-  Recorded on 2026-10-12, about 2 minutes after the scale-down.
+  evals/faults/traffic.sh, then evals/faults/processor-not-running.sh start
+  (kubectl -n payflow scale deployment processor-simulator --replicas=0).
+  Recorded on 2026-10-14, as the alert began to fire (about 90 seconds after the scale-down).
 cleaned_up_by: kubectl -n payflow scale deployment processor-simulator --replicas=2
 expected:
   root_causes: [processor_not_running]

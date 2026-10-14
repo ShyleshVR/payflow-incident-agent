@@ -5,9 +5,10 @@ description: >
   The card processor was switched to a simulated outage for 240 seconds while about 5 payments
   a second were being made. Its pods kept running and answered every request with 503.
 caused_by: >
-  In PayFlow: scripts/load-test.sh step 5 5m, then
-  POST processor-simulator:8086/v1/test/outage?seconds=240 (with the processor API key).
-  Recorded on 2026-10-12, about 90 seconds after the outage began.
+  evals/faults/traffic.sh, then evals/faults/processor-outage.sh start 240.
+  Recorded on 2026-10-14, as the alert began to fire (about 90 seconds after the outage began),
+  with payment-service logging each failed call. The cluster had been started a few minutes
+  before, so the processor's pods show start-up probe warnings from then: true, and beside the point.
 cleaned_up_by: The outage ends by itself; payments still waiting are retried or released.
 expected:
   root_causes: [processor_outage]

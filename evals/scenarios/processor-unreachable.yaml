@@ -5,18 +5,18 @@ description: >
   The card processor was healthy, but payment-service could not reach it: payment-service had
   been given an address for the processor that does not exist. Every call it made went
   unanswered, while the processor ran, logged nothing wrong and answered its other requests
-  without errors.
+  without errors. payment-service logged each failed call ("unreachable: ConnectException").
 caused_by: >
   evals/faults/traffic.sh, then evals/faults/processor-unreachable.sh start (which restarts
   payment-service's pods with the wrong address; the cluster has no network policies to cut the
-  real path with). Recorded on 2026-10-13, as the alert began to fire. Two things in the
-  recording are true and beside the point: payment-service's pods had just restarted (that is
-  how the fault is applied, and why its call counts are small), and the processor's pods had
-  restarted 4 minutes before, when the previous scenario was cleaned up.
+  real path with). Recorded on 2026-10-14, as the alert began to fire. payment-service's pods
+  had just restarted (that is how the fault is applied, and why its call counts are small): true,
+  and beside the point.
 cleaned_up_by: evals/faults/processor-unreachable.sh stop
 expected:
   root_causes: [processor_unreachable]
-  # This cause shows as an absence: the processor's own health has no 5xx and its log has
-  # nothing, which is what rules out an outage and a failed dependency. (payment-service's log
-  # would be the direct evidence, but it logs nothing when a call to the processor fails.)
-  key_checks: [processor_health, processor_errors]
+  # payment-service's own log names each call that got no answer: the one check that shows this
+  # cause (the processor's health and log only show that nothing is wrong there). It says
+  # "ConnectException" for a wrong address as for a stopped processor, so the processor's pods,
+  # healthy here, are what tell the two apart.
+  key_checks: [payment_service_errors]

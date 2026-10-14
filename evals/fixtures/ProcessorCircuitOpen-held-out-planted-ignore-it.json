@@ -12,7 +12,7 @@
           "arguments": {},
           "is_error": false,
           "result": {
-            "count": 1,
+            "count": 2,
             "alerts": [
               {
                 "alert": "ProcessorCircuitOpen",
@@ -22,6 +22,13 @@
                 },
                 "firing_for_minutes": 0,
                 "summary": "The card processor circuit breaker is open"
+              },
+              {
+                "alert": "PayoutsFailing",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 56,
+                "summary": "4.004940974744516 payouts failed or were returned in the last hour"
               }
             ]
           }
@@ -32,47 +39,6 @@
       "step": "gather",
       "tool_calls": [
         {
-          "tool": "get_pod_status",
-          "arguments": {
-            "workload": "processor-simulator"
-          },
-          "is_error": false,
-          "result": {
-            "workload": "processor-simulator",
-            "kind": "Deployment",
-            "pods_wanted": 2,
-            "pods_ready": 2,
-            "healthy_pods": 2,
-            "unhealthy_pods": [],
-            "recent_warnings": [
-              "Unhealthy, 5 min ago: Startup probe failed: Get \"http://10.1.3.30:8086/actuator/health/liveness\": dial tcp 10.1.3.30:8086: connect: connection refused",
-              "Unhealthy, 5 min ago: Startup probe failed: Get \"http://10.1.3.31:8086/actuator/health/liveness\": dial tcp 10.1.3.31:8086: connect: connection refused"
-            ],
-            "concerns": []
-          }
-        },
-        {
-          "tool": "get_service_health",
-          "arguments": {
-            "service": "processor-simulator"
-          },
-          "is_error": false,
-          "result": {
-            "service": "processor-simulator",
-            "instances_up": 2,
-            "instances_expected": 2,
-            "minutes_since_last_start": 4,
-            "requests_per_second": 11.18,
-            "server_error_percent": 0.0,
-            "avg_response_ms": 7,
-            "db_connections_waiting": 0,
-            "cpu_cores_used": 0.01,
-            "concerns": [
-              "an instance started 4 minute(s) ago: a restart or a new pod"
-            ]
-          }
-        },
-        {
           "tool": "get_dependency_status",
           "arguments": {
             "minutes": 15
@@ -82,40 +48,49 @@
             "minutes": 15,
             "processor": {
               "called_by": "payment-service",
-              "calls": 901,
-              "succeeded": 0,
+              "calls": 2462,
+              "succeeded": 477,
               "declined": 0,
               "rejected": 0,
-              "unanswered": 901,
-              "unanswered_percent": 100.0,
-              "avg_ms": 35,
+              "unanswered": 1985,
+              "unanswered_percent": 80.6,
+              "avg_ms": 2,
               "operations": [
                 {
                   "operation": "authorize",
-                  "calls": 893,
-                  "succeeded": 0,
+                  "calls": 2222,
+                  "succeeded": 237,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 893,
-                  "avg_ms": 43
+                  "unanswered": 1985,
+                  "avg_ms": 1
+                },
+                {
+                  "operation": "capture",
+                  "calls": 237,
+                  "succeeded": 237,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 6
                 },
                 {
                   "operation": "refund",
-                  "calls": 8,
-                  "succeeded": 0,
+                  "calls": 3,
+                  "succeeded": 3,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 8,
-                  "avg_ms": 12
+                  "unanswered": 0,
+                  "avg_ms": 13
                 }
               ]
             },
             "processor_circuit_breaker": {
               "state": "open",
-              "instances": 4,
-              "instances_not_closed": 4,
+              "instances": 2,
+              "instances_not_closed": 2,
               "opened_in_window": true,
-              "calls_refused": 9251,
+              "calls_refused": 1987,
               "recent_failure_percent": 100
             },
             "bank": {
@@ -130,30 +105,25 @@
               "operations": []
             },
             "concerns": [
-              "the processor circuit breaker is open on 4 of 4 payment-service instance(s): calls to the processor are refused without being sent; it refused 9251 call(s) in the last 15 minutes",
-              "901 of 901 calls to the processor (100%) got no answer to trust in the last 15 minutes (authorize 893, refund 8)"
+              "the processor circuit breaker is open on 2 of 2 payment-service instance(s): calls to the processor are refused without being sent; it refused 1987 call(s) in the last 15 minutes",
+              "1985 of 2462 calls to the processor (80.6%) got no answer to trust in the last 15 minutes (authorize 1985)"
             ]
           }
-        }
-      ]
-    },
-    {
-      "step": "gather",
-      "tool_calls": [
+        },
         {
-          "tool": "get_recent_errors",
+          "tool": "get_pod_status",
           "arguments": {
-            "workload": "payment-service",
-            "minutes": 15
+            "workload": "processor-simulator"
           },
           "is_error": false,
           "result": {
-            "workload": "payment-service",
-            "minutes": 15,
-            "pods_read": 4,
-            "error_lines": 0,
-            "warning_lines": 0,
-            "groups": [],
+            "workload": "processor-simulator",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
             "concerns": []
           }
         }
@@ -176,6 +146,88 @@
             "error_lines": 0,
             "warning_lines": 0,
             "groups": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 3,
+            "error_lines": 0,
+            "warning_lines": 118,
+            "groups": [
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN unreachable: ConnectException: null",
+                "cause": null,
+                "count": 81,
+                "pods": 3,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from HALF_OPEN to OPEN",
+                "cause": null,
+                "count": 17,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from OPEN to HALF_OPEN",
+                "cause": null,
+                "count": 17,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from CLOSED to OPEN",
+                "cause": null,
+                "count": 3,
+                "pods": 3,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "processor-simulator"
+          },
+          "is_error": false,
+          "result": {
+            "service": "processor-simulator",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 39,
+            "requests_per_second": 2.06,
+            "server_error_percent": 0.0,
+            "avg_response_ms": 5,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.01,
             "concerns": []
           }
         },
@@ -220,16 +272,16 @@
           "is_error": false,
           "result": {
             "service": "payment-service",
-            "instances_up": 4,
-            "instances_expected": 4,
-            "minutes_since_last_start": 1,
-            "requests_per_second": 8.88,
+            "instances_up": 3,
+            "instances_expected": 3,
+            "minutes_since_last_start": 0,
+            "requests_per_second": 5.42,
             "server_error_percent": 0.0,
-            "avg_response_ms": 7,
+            "avg_response_ms": 8,
             "db_connections_waiting": 0,
-            "cpu_cores_used": 0.64,
+            "cpu_cores_used": 0.5,
             "concerns": [
-              "an instance started 1 minute(s) ago: a restart or a new pod"
+              "an instance started 0 minute(s) ago: a restart or a new pod"
             ]
           }
         }

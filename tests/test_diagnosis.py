@@ -350,12 +350,12 @@ def test_a_cause_must_be_quoted_from_a_check_that_can_show_it_or_it_is_unknown(t
     assert corrected.document["result"]["diagnosis"]["attempts"] == 2
     assert (held["root_cause"], held["confidence"], held["claimed_root_cause"], held["attempts"]) == (
         "unknown", "low", "processor_outage", 2)
-    assert held["summary"].startswith("No cause is reported: processor_outage can only be shown by processor_errors, "
-                                      "processor_health")
+    assert held["summary"].startswith("No cause is reported: processor_outage is shown only by processor_errors, "
+                                      "processor_health, and only when the check found something")
     # the second question says why
     retry = model.diagnosing[1][0][-1][1]
-    assert "Your cause processor_outage is shown only by these checks: processor_errors, processor_health, and only " \
-           "when the check found something" in retry
+    assert "Your cause cannot stand on this evidence: processor_outage is shown only by processor_errors, processor_health, " \
+           "and only when the check found something" in retry
     assert "unknown is a correct answer when the evidence does not show the cause" in retry
     # and the first already told it which checks show which cause
     first = model.diagnosing[0][0][1][1]
@@ -394,3 +394,51 @@ def test_a_check_that_can_show_a_cause_shows_nothing_when_it_found_nothing():
     assert diagnosis.not_shown({"root_cause": "processor_outage"}, [cite("processor_health", "server_error_percent: 19.7")],
                                evidence, runbook) == ()
     assert [diagnosis.found_something(item) for item in (quiet_log, healthy, {"is_error": True, "result": "timed out"})] == [False] * 3
+
+
+def test_a_quote_in_single_quotes_is_the_same_quote():
+    assert diagnosis.verify([cite("processor_errors", "message: 'Simulated outage set to 240s'")], EVIDENCE)[1] == []
+
+
+UNREACHABLE_RUNBOOK = {"causes": [{"name": "processor_unreachable", "shown_by": ["payment_service_errors"],
+                                   "requires_clear": ["processor_pods", "processor_health"]}]}
+FAILED_CALLS = {"tool": "get_recent_errors", "is_error": False, "result": {"groups": [
+    {"level": "WARN", "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN unreachable: ConnectException"}],
+    "concerns": []}}
+READY = {"tool": "get_pod_status", "is_error": False, "result": {"pods_ready": 2, "concerns": []}}
+HEALTHY = {"tool": "get_service_health", "is_error": False, "result": {"server_error_percent": 0.0, "concerns": []}}
+CALLS_FAILED = cite("payment_service_errors", "UNKNOWN unreachable: ConnectException")
+
+
+def test_unreachable_stands_only_while_the_processor_itself_looks_fine():
+    answer = {"root_cause": "processor_unreachable"}
+    clean = {"payment_service_errors": FAILED_CALLS, "processor_pods": READY, "processor_health": HEALTHY}
+
+    assert diagnosis.unsupported(answer, [CALLS_FAILED], clean, UNREACHABLE_RUNBOOK) == []
+    # payment-service logs failed calls whatever the cause: with the processor's own checks failed,
+    # missing or showing a problem, they say nothing more
+    for changed, why in (({"processor_health": {"is_error": True, "result": "Prometheus did not answer"}}, "processor_health failed"),
+                         ({"processor_health": None}, "processor_health was not run"),
+                         ({"processor_pods": READY | {"result": {"concerns": ["2 of 2 pods are not ready"]}}}, "processor_pods found something")):
+        evidence = {name: item for name, item in (clean | changed).items() if item is not None}
+        reasons = diagnosis.unsupported(answer, [CALLS_FAILED], evidence, UNREACHABLE_RUNBOOK)
+        assert reasons == [("processor_unreachable also needs processor_pods, processor_health to have run and found nothing, "
+                           f"but {why}.")], why
+    # both rules at once: not shown, and not clear
+    both = diagnosis.unsupported(answer, [], {"processor_pods": READY}, UNREACHABLE_RUNBOOK)
+    assert len(both) == 2 and both[0].startswith("processor_unreachable is shown only by payment_service_errors")
+    assert diagnosis.unsupported({"root_cause": "unknown"}, [], {}, UNREACHABLE_RUNBOOK) == []
+
+
+def test_an_unreachable_diagnosis_without_a_clear_processor_is_asked_again_and_then_unknown(tmp_path):
+    claim = {"root_cause": "processor_unreachable", "confidence": "medium", "summary": "payment-service cannot reach it.",
+             "evidence": [cite("processor_errors", "Simulated outage set to 240s")]}
+    model = ScriptedModel(["processor_calls", "processor_errors"], diagnoses=[claim, claim])
+
+    held = investigate(model, tmp_path).document["result"]["diagnosis"]
+
+    assert (held["root_cause"], held["claimed_root_cause"], held["attempts"]) == ("unknown", "processor_unreachable", 2)
+    assert "also needs processor_pods, processor_health to have run and found nothing, but processor_pods was not run; " \
+           "processor_health was not run." in held["summary"]
+    first = model.diagnosing[0][0][1][1]
+    assert "Shown by: payment_service_errors. Needs clear: processor_pods, processor_health." in first

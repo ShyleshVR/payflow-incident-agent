@@ -19,8 +19,9 @@ from agent import prompts, runbooks
 # Shorter than this, a "quote" matches almost anything ("0", "up").
 MIN_QUOTE_CHARS = 3
 # JSON's own punctuation, and the backslash it puts before a quote inside a value: a log line
-# that says role "x" is written role \"x\" in the result's text, and must still match.
-_PUNCTUATION = re.compile(r'[\s"{}\[\],:\\]+')
+# that says role "x" is written role \"x\" in the result's text, and must still match. Single
+# quotes too: a model may write message: 'Simulated outage set to 240s'.
+_PUNCTUATION = re.compile("[\\s\"'{}\\[\\],:\\\\]+")
 # Per tool, the fields of its result that can carry text from outside PayFlow's operators: what a
 # service logged (a log line can quote a request), the cause of an error, and what a partner
 # answered, kept as a saga's error or step detail. Everything else in a result (counts, states,
@@ -85,6 +86,37 @@ def _plain(text: str) -> str:
     return " ".join(_PUNCTUATION.sub(" ", text).lower().split())
 
 
+def unsupported(answer: dict, verified: list[dict], evidence: dict[str, dict], runbook: dict) -> list[str]:
+    """Why the answer's cause cannot stand on this evidence, one sentence per reason; empty when
+    it can (or the runbook sets no rule for it). Two rules, both from the runbook:
+    - shown_by: a verified quote must come from a check that can show the cause and found something;
+    - requires_clear: some causes also need checks to have run and found nothing. "The processor
+      cannot be reached" means something only when the processor itself looks fine; when its pod
+      status or health failed, or shows a problem, payment-service's failed calls say nothing more."""
+    cause = next((item for item in runbook["causes"] if item["name"] == answer["root_cause"]), None)
+    if cause is None:
+        return []
+    reasons = []
+    missing = not_shown(answer, verified, evidence, runbook)
+    if missing:
+        reasons.append(f"{cause['name']} is shown only by {', '.join(missing)}, and only when the check found something "
+                       "(a logged line, or a concern); none of the quotes comes from such a check.")
+    not_clear = [f"{name} {_why_not_clear(evidence.get(name))}" for name in cause.get("requires_clear", ())
+                 if _why_not_clear(evidence.get(name))]
+    if not_clear:
+        reasons.append(f"{cause['name']} also needs {', '.join(cause['requires_clear'])} to have run and found nothing, "
+                       f"but {'; '.join(not_clear)}.")
+    return reasons
+
+
+def _why_not_clear(item: dict | None) -> str:
+    if item is None:
+        return "was not run"
+    if item.get("is_error"):
+        return "failed"
+    return "found something" if found_something(item) else ""
+
+
 def not_shown(answer: dict, verified: list[dict], evidence: dict[str, dict], runbook: dict) -> tuple[str, ...]:
     """The checks that can show the answer's cause, when none of the verified quotes comes from
     one of them that ran and found something (see found_something); empty when the cause is
@@ -105,10 +137,10 @@ def found_something(item: dict) -> bool:
     return bool(result.get("groups")) if "groups" in result else bool(result.get("concerns"))
 
 
-def conclude(answer: dict, verified: list[dict], unverified: list[dict], attempts: int, missing: tuple[str, ...] = ()) -> dict:
+def conclude(answer: dict, verified: list[dict], unverified: list[dict], attempts: int, unsupported_because: list[str] = ()) -> dict:
     """The diagnosis as the workflow reports it. A cause is not reported when no verified citation
-    is behind it, or (missing) none from a check that can show it: it becomes "unknown", and what
-    the model claimed is kept beside it."""
+    is behind it, or the runbook's rules for it do not hold (unsupported_because, see unsupported):
+    it becomes "unknown", and what the model claimed is kept beside it."""
     diagnosis = {
         "root_cause": answer["root_cause"],
         "confidence": answer["confidence"],
@@ -122,9 +154,8 @@ def conclude(answer: dict, verified: list[dict], unverified: list[dict], attempt
         diagnosis |= {"root_cause": runbooks.UNKNOWN, "confidence": "low", "claimed_root_cause": answer["root_cause"],
                       "summary": "No cause is reported: nothing the model cited could be found in the evidence. "
                                  f"(It claimed {answer['root_cause']}: {answer['summary']})"}
-    elif missing and answer["root_cause"] != runbooks.UNKNOWN:
+    elif unsupported_because and answer["root_cause"] != runbooks.UNKNOWN:
         diagnosis |= {"root_cause": runbooks.UNKNOWN, "confidence": "low", "claimed_root_cause": answer["root_cause"],
-                      "summary": f"No cause is reported: {answer['root_cause']} can only be shown by {', '.join(missing)}, and "
-                                 "nothing the model cited from those checks backs it. "
+                      "summary": f"No cause is reported: {' '.join(unsupported_because)} "
                                  f"(It claimed {answer['root_cause']}: {answer['summary']})"}
     return diagnosis

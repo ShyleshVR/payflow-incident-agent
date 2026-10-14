@@ -32,65 +32,6 @@
       "step": "gather",
       "tool_calls": [
         {
-          "tool": "get_pod_status",
-          "arguments": {
-            "workload": "processor-simulator"
-          },
-          "is_error": false,
-          "result": {
-            "workload": "processor-simulator",
-            "kind": "Deployment",
-            "pods_wanted": 2,
-            "pods_ready": 0,
-            "healthy_pods": 0,
-            "unhealthy_pods": [
-              {
-                "pod": "processor-simulator-554b575cb6-c9m2v",
-                "state": "Waiting: CrashLoopBackOff",
-                "restarts": 4,
-                "last_exit": "Error (exit 1), 0 min ago",
-                "detail": "back-off 1m20s restarting failed container=processor-simulator pod=processor-simulator-554b575cb6-c9m2v_payflow(7150030f-7643-4354-b101-a31f489995cb)"
-              },
-              {
-                "pod": "processor-simulator-554b575cb6-dqqtt",
-                "state": "Waiting: CrashLoopBackOff",
-                "restarts": 4,
-                "last_exit": "Error (exit 1), 0 min ago",
-                "detail": "back-off 1m20s restarting failed container=processor-simulator pod=processor-simulator-554b575cb6-dqqtt_payflow(7217f16a-28d0-4594-b125-df0a46fbafab)"
-              }
-            ],
-            "recent_warnings": [
-              "BackOff x16, 0 min ago: Back-off restarting failed container processor-simulator in pod processor-simulator-554b575cb6-dqqtt_payflow(7217f16a-28d0-4594-b125-df0a46fbafab)",
-              "BackOff x17, 0 min ago: Back-off restarting failed container processor-simulator in pod processor-simulator-554b575cb6-c9m2v_payflow(7150030f-7643-4354-b101-a31f489995cb)"
-            ],
-            "concerns": [
-              "2 of 2 pods are not ready",
-              "2 pod(s): Waiting: CrashLoopBackOff"
-            ]
-          }
-        },
-        {
-          "tool": "get_service_health",
-          "arguments": {
-            "service": "processor-simulator"
-          },
-          "is_error": false,
-          "result": {
-            "service": "processor-simulator",
-            "instances_up": 0,
-            "instances_expected": 2,
-            "minutes_since_last_start": null,
-            "requests_per_second": 9.25,
-            "server_error_percent": 0.0,
-            "avg_response_ms": 6,
-            "db_connections_waiting": null,
-            "cpu_cores_used": null,
-            "concerns": [
-              "no instance is up (0 of 2)"
-            ]
-          }
-        },
-        {
           "tool": "get_dependency_status",
           "arguments": {
             "minutes": 15
@@ -100,58 +41,49 @@
             "minutes": 15,
             "processor": {
               "called_by": "payment-service",
-              "calls": 10288,
-              "succeeded": 3290,
+              "calls": 2756,
+              "succeeded": 336,
               "declined": 0,
               "rejected": 0,
-              "unanswered": 6998,
-              "unanswered_percent": 68.0,
-              "avg_ms": 53,
+              "unanswered": 2420,
+              "unanswered_percent": 87.8,
+              "avg_ms": 8,
               "operations": [
                 {
                   "operation": "authorize",
-                  "calls": 8595,
-                  "succeeded": 1640,
+                  "calls": 2586,
+                  "succeeded": 166,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 6955,
-                  "avg_ms": 62
-                },
-                {
-                  "operation": "capture",
-                  "calls": 1645,
-                  "succeeded": 1640,
-                  "declined": 0,
-                  "rejected": 0,
-                  "unanswered": 5,
+                  "unanswered": 2420,
                   "avg_ms": 8
                 },
                 {
+                  "operation": "capture",
+                  "calls": 166,
+                  "succeeded": 166,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 6
+                },
+                {
                   "operation": "refund",
-                  "calls": 8,
+                  "calls": 4,
                   "succeeded": 4,
                   "declined": 0,
                   "rejected": 0,
-                  "unanswered": 4,
-                  "avg_ms": 7
-                },
-                {
-                  "operation": "reverse",
-                  "calls": 40,
-                  "succeeded": 6,
-                  "declined": 0,
-                  "rejected": 0,
-                  "unanswered": 34,
-                  "avg_ms": 2
+                  "unanswered": 0,
+                  "avg_ms": 12
                 }
               ]
             },
             "processor_circuit_breaker": {
               "state": "open",
-              "instances": 3,
-              "instances_not_closed": 3,
+              "instances": 2,
+              "instances_not_closed": 2,
               "opened_in_window": true,
-              "calls_refused": 6717,
+              "calls_refused": 2344,
               "recent_failure_percent": 100
             },
             "bank": {
@@ -166,9 +98,69 @@
               "operations": []
             },
             "concerns": [
-              "the processor circuit breaker is open on 3 of 3 payment-service instance(s): calls to the processor are refused without being sent; it refused 6717 call(s) in the last 15 minutes",
-              "6998 of 10288 calls to the processor (68%) got no answer to trust in the last 15 minutes (authorize 6955, capture 5, refund 4, reverse 34)"
+              "the processor circuit breaker is open on 2 of 2 payment-service instance(s): calls to the processor are refused without being sent; it refused 2344 call(s) in the last 15 minutes",
+              "2420 of 2756 calls to the processor (87.8%) got no answer to trust in the last 15 minutes (authorize 2420)"
             ]
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "processor-simulator"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 0,
+            "healthy_pods": 0,
+            "unhealthy_pods": [
+              {
+                "pod": "processor-simulator-554b575cb6-22w8v",
+                "state": "Waiting: CrashLoopBackOff",
+                "restarts": 4,
+                "last_exit": "Error (exit 1), 0 min ago",
+                "detail": "back-off 1m20s restarting failed container=processor-simulator pod=processor-simulator-554b575cb6-22w8v_payflow(90465f63-90e4-4cc3-84aa-bee2845bb091)"
+              },
+              {
+                "pod": "processor-simulator-554b575cb6-vtlwk",
+                "state": "Waiting: CrashLoopBackOff",
+                "restarts": 4,
+                "last_exit": "Error (exit 1), 0 min ago",
+                "detail": "back-off 1m20s restarting failed container=processor-simulator pod=processor-simulator-554b575cb6-vtlwk_payflow(0ea1a300-4c47-4328-9f43-3c34efd0a6a2)"
+              }
+            ],
+            "recent_warnings": [
+              "BackOff x14, 0 min ago: Back-off restarting failed container processor-simulator in pod processor-simulator-554b575cb6-vtlwk_payflow(0ea1a300-4c47-4328-9f43-3c34efd0a6a2)",
+              "BackOff x16, 0 min ago: Back-off restarting failed container processor-simulator in pod processor-simulator-554b575cb6-22w8v_payflow(90465f63-90e4-4cc3-84aa-bee2845bb091)"
+            ],
+            "concerns": [
+              "2 of 2 pods are not ready",
+              "2 pod(s): Waiting: CrashLoopBackOff"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "processor-simulator",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
           }
         }
       ]
@@ -192,22 +184,31 @@
             "recent_warnings": [],
             "concerns": []
           }
-        },
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
         {
-          "tool": "get_recent_errors",
+          "tool": "get_service_health",
           "arguments": {
-            "workload": "processor-simulator",
-            "minutes": 15
+            "service": "processor-simulator"
           },
           "is_error": false,
           "result": {
-            "workload": "processor-simulator",
-            "minutes": 15,
-            "pods_read": 2,
-            "error_lines": 0,
-            "warning_lines": 0,
-            "groups": [],
-            "concerns": []
+            "service": "processor-simulator",
+            "instances_up": 0,
+            "instances_expected": 2,
+            "minutes_since_last_start": null,
+            "requests_per_second": 1.09,
+            "server_error_percent": 0.0,
+            "avg_response_ms": 5,
+            "db_connections_waiting": null,
+            "cpu_cores_used": null,
+            "concerns": [
+              "no instance is up (0 of 2)"
+            ]
           }
         }
       ]
@@ -225,10 +226,61 @@
           "result": {
             "workload": "payment-service",
             "minutes": 15,
-            "pods_read": 3,
+            "pods_read": 2,
             "error_lines": 0,
-            "warning_lines": 0,
-            "groups": [],
+            "warning_lines": 128,
+            "groups": [
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN unreachable: ConnectException: null",
+                "cause": null,
+                "count": 67,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from HALF_OPEN to OPEN",
+                "cause": null,
+                "count": 20,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from OPEN to HALF_OPEN",
+                "cause": null,
+                "count": 20,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN unreachable: HttpConnectTimeoutException: HTTP connect timed out",
+                "cause": null,
+                "count": 19,
+                "pods": 2,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from CLOSED to OPEN",
+                "cause": null,
+                "count": 2,
+                "pods": 2,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              }
+            ],
             "concerns": []
           }
         },
@@ -240,14 +292,14 @@
           "is_error": false,
           "result": {
             "service": "payment-service",
-            "instances_up": 3,
-            "instances_expected": 3,
-            "minutes_since_last_start": 12,
-            "requests_per_second": 10.68,
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 55,
+            "requests_per_second": 5.77,
             "server_error_percent": 0.0,
-            "avg_response_ms": 5,
+            "avg_response_ms": 4,
             "db_connections_waiting": 0,
-            "cpu_cores_used": 0.21,
+            "cpu_cores_used": 0.14,
             "concerns": []
           }
         },

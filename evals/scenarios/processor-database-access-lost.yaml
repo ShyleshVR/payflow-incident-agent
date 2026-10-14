@@ -8,8 +8,7 @@ description: >
   stayed healthy.
 caused_by: >
   evals/faults/traffic.sh, then evals/faults/processor-database-access-lost.sh start.
-  Recorded on 2026-10-13, as the alert began to fire. The cluster had been started a few minutes
-  before, so the processor's pods show start-up probe warnings from then: true, and beside the point.
+  Recorded on 2026-10-14, as the alert began to fire.
 cleaned_up_by: evals/faults/processor-database-access-lost.sh stop
 expected:
   root_causes: [processor_dependency_down]

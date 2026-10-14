@@ -9,9 +9,9 @@ description: >
 caused_by: >
   evals/faults/traffic.sh 6, then evals/faults/processor-outage.sh start 150,
   evals/faults/wait-for-alert.sh ProcessorCircuitOpen, evals/faults/processor-outage.sh wait-ended,
-  and the investigation at once. Recorded on 2026-10-13, 3 seconds after the breaker closed.
-  The processor's pods had restarted 11 minutes before, when an earlier scenario was cleaned
-  up: true, and beside the point.
+  and the investigation at once. Recorded on 2026-10-14, a few seconds after the breaker closed.
+  The processor's pods show start-up probe warnings from 20 minutes before, when an earlier
+  scenario was cleaned up: true, and beside the point.
 cleaned_up_by: Nothing to undo; the outage had ended.
 expected:
   root_causes: [processor_outage]

@@ -12,7 +12,7 @@
           "arguments": {},
           "is_error": false,
           "result": {
-            "count": 1,
+            "count": 2,
             "alerts": [
               {
                 "alert": "ProcessorCircuitOpen",
@@ -20,8 +20,15 @@
                 "about": {
                   "application": "payment-service"
                 },
-                "firing_for_minutes": 1,
+                "firing_for_minutes": 0,
                 "summary": "The card processor circuit breaker is open"
+              },
+              {
+                "alert": "PayoutsFailing",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 6,
+                "summary": "4.042647126503802 payouts failed or were returned in the last hour"
               }
             ]
           }
@@ -31,6 +38,79 @@
     {
       "step": "gather",
       "tool_calls": [
+        {
+          "tool": "get_dependency_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "processor": {
+              "called_by": "payment-service",
+              "calls": 3027,
+              "succeeded": 139,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 2888,
+              "unanswered_percent": 95.4,
+              "avg_ms": 1,
+              "operations": [
+                {
+                  "operation": "authorize",
+                  "calls": 2957,
+                  "succeeded": 69,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 2888,
+                  "avg_ms": 1
+                },
+                {
+                  "operation": "capture",
+                  "calls": 70,
+                  "succeeded": 70,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 13
+                }
+              ]
+            },
+            "processor_circuit_breaker": {
+              "state": "open",
+              "instances": 4,
+              "instances_not_closed": 4,
+              "opened_in_window": true,
+              "calls_refused": 2482,
+              "recent_failure_percent": 100
+            },
+            "bank": {
+              "called_by": "payout-service",
+              "calls": 8,
+              "succeeded": 8,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 0,
+              "unanswered_percent": 0.0,
+              "avg_ms": 9,
+              "operations": [
+                {
+                  "operation": "status",
+                  "calls": 8,
+                  "succeeded": 8,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 9
+                }
+              ]
+            },
+            "concerns": [
+              "the processor circuit breaker is open on 4 of 4 payment-service instance(s): calls to the processor are refused without being sent; it refused 2482 call(s) in the last 15 minutes",
+              "2888 of 3027 calls to the processor (95.4%) got no answer to trust in the last 15 minutes (authorize 2888)"
+            ]
+          }
+        },
         {
           "tool": "get_pod_status",
           "arguments": {
@@ -44,10 +124,19 @@
             "pods_ready": 2,
             "healthy_pods": 2,
             "unhealthy_pods": [],
-            "recent_warnings": [],
+            "recent_warnings": [
+              "Unhealthy x4, 8 min ago: Startup probe failed: Get \"http://10.1.3.59:8086/actuator/health/liveness\": dial tcp 10.1.3.59:8086: connect: connection refused",
+              "Unhealthy x4, 8 min ago: Startup probe failed: Get \"http://10.1.3.56:8086/actuator/health/liveness\": dial tcp 10.1.3.56:8086: connect: connection refused",
+              "Unhealthy, 8 min ago: Startup probe failed: HTTP probe failed with statuscode: 503"
+            ],
             "concerns": []
           }
-        },
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
         {
           "tool": "get_service_health",
           "arguments": {
@@ -58,94 +147,17 @@
             "service": "processor-simulator",
             "instances_up": 2,
             "instances_expected": 2,
-            "minutes_since_last_start": 61,
-            "requests_per_second": 1.35,
-            "server_error_percent": 19.69,
-            "avg_response_ms": 4,
+            "minutes_since_last_start": 8,
+            "requests_per_second": 0.96,
+            "server_error_percent": 47.87,
+            "avg_response_ms": 7,
             "db_connections_waiting": 0,
-            "cpu_cores_used": 0.01,
+            "cpu_cores_used": 0.02,
             "concerns": [
-              "19.7% of requests fail with a 5xx"
+              "47.9% of requests fail with a 5xx"
             ]
           }
         },
-        {
-          "tool": "get_dependency_status",
-          "arguments": {
-            "minutes": 15
-          },
-          "is_error": false,
-          "result": {
-            "minutes": 15,
-            "processor": {
-              "called_by": "payment-service",
-              "calls": 3715,
-              "succeeded": 315,
-              "declined": 0,
-              "rejected": 0,
-              "unanswered": 3400,
-              "unanswered_percent": 91.5,
-              "avg_ms": 1,
-              "operations": [
-                {
-                  "operation": "authorize",
-                  "calls": 3557,
-                  "succeeded": 157,
-                  "declined": 0,
-                  "rejected": 0,
-                  "unanswered": 3400,
-                  "avg_ms": 0
-                },
-                {
-                  "operation": "capture",
-                  "calls": 157,
-                  "succeeded": 157,
-                  "declined": 0,
-                  "rejected": 0,
-                  "unanswered": 0,
-                  "avg_ms": 5
-                },
-                {
-                  "operation": "refund",
-                  "calls": 1,
-                  "succeeded": 1,
-                  "declined": 0,
-                  "rejected": 0,
-                  "unanswered": 0,
-                  "avg_ms": null
-                }
-              ]
-            },
-            "processor_circuit_breaker": {
-              "state": "open",
-              "instances": 2,
-              "instances_not_closed": 2,
-              "opened_in_window": true,
-              "calls_refused": 3314,
-              "recent_failure_percent": 100
-            },
-            "bank": {
-              "called_by": "payout-service",
-              "calls": 0,
-              "succeeded": 0,
-              "declined": 0,
-              "rejected": 0,
-              "unanswered": 0,
-              "unanswered_percent": 0.0,
-              "avg_ms": null,
-              "operations": []
-            },
-            "concerns": [
-              "the processor circuit breaker is open on 2 of 2 payment-service instance(s): calls to the processor are refused without being sent; it refused 3314 call(s) in the last 15 minutes",
-              "3400 of 3715 calls to the processor (91.5%) got no answer to trust in the last 15 minutes (authorize 3400)"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "step": "gather",
-      "tool_calls": [
         {
           "tool": "get_recent_errors",
           "arguments": {
@@ -177,7 +189,7 @@
       ]
     },
     {
-      "step": "record_unchosen",
+      "step": "gather",
       "tool_calls": [
         {
           "tool": "get_recent_errors",
@@ -189,13 +201,59 @@
           "result": {
             "workload": "payment-service",
             "minutes": 15,
-            "pods_read": 2,
+            "pods_read": 4,
             "error_lines": 0,
-            "warning_lines": 0,
-            "groups": [],
+            "warning_lines": 241,
+            "groups": [
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor call got no answer to trust: operation=authorize, UNKNOWN 503 processor_unavailable: Processor outage (simulated)",
+                "cause": null,
+                "count": 159,
+                "pods": 4,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from HALF_OPEN to OPEN",
+                "cause": null,
+                "count": 39,
+                "pods": 4,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from OPEN to HALF_OPEN",
+                "cause": null,
+                "count": 39,
+                "pods": 4,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.processor.ProcessorClient",
+                "message": "Processor circuit breaker changed state: State transition from CLOSED to OPEN",
+                "cause": null,
+                "count": 4,
+                "pods": 4,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              }
+            ],
             "concerns": []
           }
-        },
+        }
+      ]
+    },
+    {
+      "step": "record_unchosen",
+      "tool_calls": [
         {
           "tool": "get_pod_status",
           "arguments": {
@@ -209,7 +267,9 @@
             "pods_ready": 1,
             "healthy_pods": 1,
             "unhealthy_pods": [],
-            "recent_warnings": [],
+            "recent_warnings": [
+              "Unhealthy x2, 9 min ago: Readiness probe failed: /var/run/postgresql:5432 - rejecting connections"
+            ],
             "concerns": []
           }
         },
@@ -221,14 +281,14 @@
           "is_error": false,
           "result": {
             "service": "payment-service",
-            "instances_up": 2,
-            "instances_expected": 2,
-            "minutes_since_last_start": 60,
-            "requests_per_second": 6.39,
+            "instances_up": 4,
+            "instances_expected": 4,
+            "minutes_since_last_start": 5,
+            "requests_per_second": 5.72,
             "server_error_percent": 0.0,
-            "avg_response_ms": 4,
+            "avg_response_ms": 8,
             "db_connections_waiting": 0,
-            "cpu_cores_used": 0.13,
+            "cpu_cores_used": 0.53,
             "concerns": []
           }
         },

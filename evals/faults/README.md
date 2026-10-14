@@ -42,9 +42,15 @@ alert, run `processor-outage.sh wait-ended` and investigate the moment it return
 
 ## Before the next one
 
-Wait until the traffic has stopped, no alert is firing and no payment is still being retried,
-or the next recording carries this one's leftovers. A recording is a real cluster at a real
-moment, so some leftovers stay in anyway (a pod that restarted ten minutes ago); say so in the
+Wait **at least 16 minutes after undoing a fault**, and until the traffic has stopped, no
+payment is still being retried and ProcessorCircuitOpen no longer fires. The checks look back
+15 minutes (logs, call counts), so a recording made sooner shows the previous fault as well: the
+processor's log of a database fault five minutes earlier is enough to turn "unreachable" into
+"dependency down". Other alerts can stay for up to an hour after a processor fault (PayoutsFailing,
+DeadLettersArriving); they do not need to clear.
+
+A recording is a real cluster at a real moment, so some leftovers stay in anyway (a pod that
+restarted ten minutes ago, Kubernetes warnings, which are kept for 30 minutes); say so in the
 scenario's `caused_by`.
 
 `traffic.sh` uses PayFlow's load test, which reports FAIL while a fault runs (expected) and

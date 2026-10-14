@@ -39,6 +39,8 @@ class Cause:
     name: str
     description: str
     shown_by: tuple[str, ...] = ()
+    # checks that must have run and found nothing for this cause to stand (see diagnosis.unsupported)
+    requires_clear: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,12 +113,17 @@ def parse(text: str, file_name: str) -> Runbook:
         if not isinstance(description, str) or not description.strip():
             raise invalid(f"cause {name} needs a line saying what it means")
         causes.append(Cause(name=name, description=" ".join(description.split())))
-    shown_by = header.get("shown_by") or {}
-    if not isinstance(shown_by, dict) or not all(isinstance(names, list) and names for names in shown_by.values()):
-        raise invalid("shown_by must list, for a cause, the checks that can show it")
-    if set(shown_by) - {cause.name for cause in causes}:
-        raise invalid(f"shown_by names a cause the header does not have: {sorted(set(shown_by) - {cause.name for cause in causes})}")
-    causes = [Cause(cause.name, cause.description, tuple(str(name) for name in shown_by.get(cause.name, ()))) for cause in causes]
+    rules = {}
+    for field in ("shown_by", "requires_clear"):
+        listed_per_cause = header.get(field) or {}
+        if not isinstance(listed_per_cause, dict) or not all(isinstance(names, list) and names for names in listed_per_cause.values()):
+            raise invalid(f"{field} must list, for a cause, the checks it means")
+        if set(listed_per_cause) - {cause.name for cause in causes}:
+            raise invalid(f"{field} names a cause the header does not have: "
+                          f"{sorted(set(listed_per_cause) - {cause.name for cause in causes})}")
+        rules[field] = listed_per_cause
+    causes = [Cause(cause.name, cause.description, tuple(str(name) for name in rules["shown_by"].get(cause.name, ())),
+                    tuple(str(name) for name in rules["requires_clear"].get(cause.name, ()))) for cause in causes]
 
     listed = header.get("checks")
     if not isinstance(listed, dict) or not listed:
@@ -130,9 +137,10 @@ def parse(text: str, file_name: str) -> Runbook:
         if not isinstance(arguments, dict) or set(fields) - {"tool", "arguments", "tells"}:
             raise invalid(f"check {name} may only have tool, arguments and tells")
         checks.append(Check(name=str(name), tool=fields["tool"], arguments=arguments, tells=" ".join(fields["tells"].split())))
-    unknown_checks = sorted({name for cause in causes for name in cause.shown_by} - {check.name for check in checks})
+    unknown_checks = sorted({name for cause in causes for name in (*cause.shown_by, *cause.requires_clear)}
+                            - {check.name for check in checks})
     if unknown_checks:
-        raise invalid(f"shown_by names a check the header does not have: {unknown_checks}")
+        raise invalid(f"shown_by or requires_clear names a check the header does not have: {unknown_checks}")
     resolution = _section(guidance, RESOLUTION_HEADING)
     if not resolution:
         raise invalid(f"the guidance needs a section \"{RESOLUTION_HEADING}\" (the report quotes it)")

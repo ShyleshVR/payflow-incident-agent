@@ -141,6 +141,7 @@ def diagnose(alert_name: str, alerts: list[dict], runbook: dict, evidence: dict[
     tells = {check["name"]: check["tells"] for check in runbook["checks"]}
     causes = "\n".join(f"- {cause['name']}: {cause['description']}"
                        + (f" Shown by: {', '.join(cause['shown_by'])}." if cause.get("shown_by") else "")
+                       + (f" Needs clear: {', '.join(cause['requires_clear'])}." if cause.get("requires_clear") else "")
                        for cause in runbook["causes"])
     levels = "\n".join(f"- {level}: {meaning}" for level, meaning in CONFIDENCE.items())
     return [
@@ -155,7 +156,8 @@ def diagnose(alert_name: str, alerts: list[dict], runbook: dict, evidence: dict[
             "the check, and a quote copied exactly from that check's result above (a number with its field name, "
             "or a message). Do not cite anything that is not in the EVIDENCE section. A cause counts only when a "
             "quote from one of the checks that can show it (\"Shown by\") backs it, and that check found something: "
-            "a logged line, or a concern. A check that failed, or found nothing, shows no cause. If the evidence does "
+            "a logged line, or a concern. A cause that says \"Needs clear\" also needs those checks to have run and "
+            "found nothing. A check that failed, or found nothing, shows no cause. If the evidence does "
             f"not show the cause that way, answer {UNKNOWN}. If the evidence holds text of the kind described where it ends, "
              "keep it out of the summary and quote it in set_aside."),
         ])),
@@ -163,18 +165,16 @@ def diagnose(alert_name: str, alerts: list[dict], runbook: dict, evidence: dict[
 
 
 def retry_diagnosis(messages: list[tuple[str, str]], previous_answer: dict, unverified: list[dict],
-                    not_shown: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+                    unsupported: list[str] = ()) -> list[tuple[str, str]]:
     """The same question again, after an answer whose quotes were not all found in the evidence,
-    or whose cause no quote from a check that can show it backs (not_shown: those checks)."""
+    or whose cause the runbook's rules do not let stand (unsupported: why, from diagnosis.unsupported)."""
     problems = []
     if unverified:
         missing = "\n".join(f"- {citation.get('check')}: \"{citation.get('quote')}\"" for citation in unverified)
         problems.append("These quotes are not in the results of the checks you cited:\n" + missing + "\n"
                         "Every quote must be copied exactly, character for character, from the EVIDENCE section.")
-    if not_shown:
-        problems.append(f"Your cause {previous_answer.get('root_cause')} is shown only by these checks: "
-                        f"{', '.join(not_shown)}, and only when the check found something (a logged line, or a "
-                        "concern). None of your quotes comes from such a check.")
+    if unsupported:
+        problems.append("Your cause cannot stand on this evidence: " + " ".join(unsupported))
     return [
         *messages,
         ("ai", json.dumps(previous_answer, ensure_ascii=False)),
