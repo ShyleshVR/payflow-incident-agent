@@ -33,9 +33,12 @@ class Check:
 
 @dataclass(frozen=True)
 class Cause:
-    """One thing that can be behind the alert. The diagnosis names one of these, or "unknown"."""
+    """One thing that can be behind the alert. The diagnosis names one of these, or "unknown".
+    shown_by: the checks whose result can show this cause. A diagnosis of it must quote one of
+    them (one that ran without failing), or it is not reported. Empty: no such rule."""
     name: str
     description: str
+    shown_by: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,12 @@ def parse(text: str, file_name: str) -> Runbook:
         if not isinstance(description, str) or not description.strip():
             raise invalid(f"cause {name} needs a line saying what it means")
         causes.append(Cause(name=name, description=" ".join(description.split())))
+    shown_by = header.get("shown_by") or {}
+    if not isinstance(shown_by, dict) or not all(isinstance(names, list) and names for names in shown_by.values()):
+        raise invalid("shown_by must list, for a cause, the checks that can show it")
+    if set(shown_by) - {cause.name for cause in causes}:
+        raise invalid(f"shown_by names a cause the header does not have: {sorted(set(shown_by) - {cause.name for cause in causes})}")
+    causes = [Cause(cause.name, cause.description, tuple(str(name) for name in shown_by.get(cause.name, ()))) for cause in causes]
 
     listed = header.get("checks")
     if not isinstance(listed, dict) or not listed:
@@ -121,6 +130,9 @@ def parse(text: str, file_name: str) -> Runbook:
         if not isinstance(arguments, dict) or set(fields) - {"tool", "arguments", "tells"}:
             raise invalid(f"check {name} may only have tool, arguments and tells")
         checks.append(Check(name=str(name), tool=fields["tool"], arguments=arguments, tells=" ".join(fields["tells"].split())))
+    unknown_checks = sorted({name for cause in causes for name in cause.shown_by} - {check.name for check in checks})
+    if unknown_checks:
+        raise invalid(f"shown_by names a check the header does not have: {unknown_checks}")
     resolution = _section(guidance, RESOLUTION_HEADING)
     if not resolution:
         raise invalid(f"the guidance needs a section \"{RESOLUTION_HEADING}\" (the report quotes it)")

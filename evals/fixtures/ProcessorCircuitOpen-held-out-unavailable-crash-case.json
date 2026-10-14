@@ -1,0 +1,229 @@
+{
+  "id": "derived-ProcessorCircuitOpen-held-out-unavailable-crash-case",
+  "alert_name": "ProcessorCircuitOpen",
+  "derived_from": "ProcessorCircuitOpen-processor-crash-loop.json",
+  "derived": "The processor's crash loop, with its pod status and health failing: what is left (nothing in its log, calls unanswered) fits a processor that is not running and one that cannot be reached alike.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 1,
+            "alerts": [
+              {
+                "alert": "ProcessorCircuitOpen",
+                "severity": "critical",
+                "about": {
+                  "application": "payment-service"
+                },
+                "firing_for_minutes": 0,
+                "summary": "The card processor circuit breaker is open"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "processor-simulator"
+          },
+          "is_error": true,
+          "result": "Kubernetes did not answer at namespace payflow (HTTP 503 Service Unavailable). This fact is unavailable; it says nothing about PayFlow itself."
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "processor-simulator"
+          },
+          "is_error": true,
+          "result": "Prometheus did not answer at http://localhost:9090 (ConnectError). This fact is unavailable; it says nothing about PayFlow itself."
+        },
+        {
+          "tool": "get_dependency_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "processor": {
+              "called_by": "payment-service",
+              "calls": 10288,
+              "succeeded": 3290,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 6998,
+              "unanswered_percent": 68.0,
+              "avg_ms": 53,
+              "operations": [
+                {
+                  "operation": "authorize",
+                  "calls": 8595,
+                  "succeeded": 1640,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 6955,
+                  "avg_ms": 62
+                },
+                {
+                  "operation": "capture",
+                  "calls": 1645,
+                  "succeeded": 1640,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 5,
+                  "avg_ms": 8
+                },
+                {
+                  "operation": "refund",
+                  "calls": 8,
+                  "succeeded": 4,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 4,
+                  "avg_ms": 7
+                },
+                {
+                  "operation": "reverse",
+                  "calls": 40,
+                  "succeeded": 6,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 34,
+                  "avg_ms": 2
+                }
+              ]
+            },
+            "processor_circuit_breaker": {
+              "state": "open",
+              "instances": 3,
+              "instances_not_closed": 3,
+              "opened_in_window": true,
+              "calls_refused": 6717,
+              "recent_failure_percent": 100
+            },
+            "bank": {
+              "called_by": "payout-service",
+              "calls": 0,
+              "succeeded": 0,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 0,
+              "unanswered_percent": 0.0,
+              "avg_ms": null,
+              "operations": []
+            },
+            "concerns": [
+              "the processor circuit breaker is open on 3 of 3 payment-service instance(s): calls to the processor are refused without being sent; it refused 6717 call(s) in the last 15 minutes",
+              "6998 of 10288 calls to the processor (68%) got no answer to trust in the last 15 minutes (authorize 6955, capture 5, refund 4, reverse 34)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "postgres"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "postgres",
+            "kind": "StatefulSet",
+            "pods_wanted": 1,
+            "pods_ready": 1,
+            "healthy_pods": 1,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "processor-simulator",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "record_unchosen",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 3,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "payment-service",
+            "instances_up": 3,
+            "instances_expected": 3,
+            "minutes_since_last_start": 12,
+            "requests_per_second": 10.68,
+            "server_error_percent": 0.0,
+            "avg_response_ms": 5,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.21,
+            "concerns": []
+          }
+        },
+        {
+          "tool": "list_sagas_needing_attention",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "stuck_after_minutes": 15,
+            "payments_parked": 0,
+            "payments_stuck": 0,
+            "payouts_parked": 0,
+            "payouts_stuck": 0,
+            "sagas": [],
+            "not_listed": 0,
+            "concerns": []
+          }
+        }
+      ]
+    }
+  ]
+}

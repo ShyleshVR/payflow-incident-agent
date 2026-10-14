@@ -159,8 +159,8 @@ def test_past_investigations_can_be_listed_and_shown_without_anything_running(tm
 
     first = investigate(tmp_path)
     unknown = investigate(tmp_path, diagnoses=(), at=datetime(2026, 10, 12, 14, 0, 0, tzinfo=UTC))
-    replay = asyncio.run(run.investigate("ProcessorCircuitOpen", ReplayTools(load(first.path)), Named(["sagas"], diagnoses=[
-        OUTAGE | {"evidence": [{"check": "sagas", "quote": "payments_parked 3"}]}]), tmp_path, replay_of=first.id,
+    replay = asyncio.run(run.investigate("ProcessorCircuitOpen", ReplayTools(load(first.path)), Named(["processor_errors"], diagnoses=[
+        OUTAGE]), tmp_path, replay_of=first.id,
         now=lambda: datetime(2026, 10, 12, 15, 0, 0, tzinfo=UTC)))
 
     assert payflow_agent.main(["list"]) == payflow_agent.DONE

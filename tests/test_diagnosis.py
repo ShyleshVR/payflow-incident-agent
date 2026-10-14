@@ -275,7 +275,7 @@ def test_a_diagnosis_has_a_place_for_text_that_is_not_a_fact_and_it_comes_last()
     assert list(diagnosing.model_fields)[-1] == "set_aside"
     assert "set_aside" not in prompts.next_checks_shape(["sagas"], False).model_fields    # only a diagnosis has it
     described = diagnosing.model_fields["set_aside"].description
-    assert described.startswith("Usually empty.") and "keep it out of the summary" in described
+    assert described.startswith("Almost always empty.") and "keep it out of the summary" in described
     assert diagnosing(**good, set_aside=[cite("processor_errors", PLANTED)]).set_aside[0].check == "processor_errors"
     for wrong in ([cite("sagas", PLANTED)],                                  # a check that was not run
                   [cite("processor_errors", "x")] * 3,                       # more than two
@@ -309,3 +309,67 @@ def test_a_report_says_nothing_about_text_put_aside_when_there_was_none(tmp_path
 
     assert trace.document["result"]["diagnosis"]["set_aside"] == []
     assert "not followed" not in trace.report_path.read_text(encoding="utf-8")
+
+
+def test_only_text_from_outside_can_be_put_aside_never_a_count_a_state_a_concern_or_a_failed_check(tmp_path):
+    calls = CALLS | {"concerns": ["the processor circuit breaker is open on 2 of 2 payment-service instance(s)"]}
+    planted = cite("processor_errors", PLANTED)
+    model = ScriptedModel(["processor_errors", "processor_calls"], diagnoses=[OUTAGE | {"set_aside": [
+        planted,
+        cite("processor_calls", "the processor circuit breaker is open on 2 of 2 payment-service instance(s)"),   # a tool's concern
+        cite("processor_calls", "unanswered_percent: 91.5"),                                                     # a count
+        cite("processor_errors", "error_lines: 0, warning_lines: 2")]}])                                         # counts
+    tools = FakeTools([CIRCUIT_OPEN], get_dependency_status=calls, get_recent_errors=NOISY_ERRORS)
+
+    found = asyncio.run(run.investigate("ProcessorCircuitOpen", tools, model, tmp_path, now=lambda: AT)).document["result"]["diagnosis"]
+
+    assert found["set_aside"] == [planted]
+    # nor a failed check's error, though it can be quoted as evidence
+    failed = {"processor_errors": {"tool": "get_recent_errors", "is_error": True, "result": "Kubernetes did not answer (HTTP 403 Forbidden)."}}
+    assert diagnosis.set_aside({"set_aside": [cite("processor_errors", "HTTP 403 Forbidden")]}, failed) == []
+    assert diagnosis.verify([cite("processor_errors", "HTTP 403 Forbidden")], failed)[0] != []
+    # the fields of a saga and a pod that carry outside text
+    # a saga's last error can carry a partner's text; Kubernetes' own messages about a pod cannot
+    sagas = {"sagas": {"tool": "list_sagas_needing_attention", "is_error": False,
+                       "result": {"payments_parked": 1, "sagas": [{"id": "pay_1", "last_error": PLANTED}]}},
+             "pods": {"tool": "get_pod_status", "is_error": False,
+                      "result": {"pods_ready": 2, "recent_warnings": ["Unhealthy: probe failed"]}}}
+    assert diagnosis.set_aside({"set_aside": [cite("sagas", PLANTED), cite("pods", "probe failed"), cite("pods", "pods_ready: 2")]},
+                               sagas) == [cite("sagas", PLANTED)]
+
+
+def test_a_cause_must_be_quoted_from_a_check_that_can_show_it_or_it_is_unknown(tmp_path):
+    # processor_outage is shown by processor_errors or processor_health; the calls go unanswered whatever the cause
+    calls_only = OUTAGE | {"evidence": [cite("processor_calls", "unanswered_percent 91.5")]}
+
+    corrected = investigate(ScriptedModel(["processor_calls", "processor_errors"], diagnoses=[calls_only, OUTAGE]), tmp_path)
+    model = ScriptedModel(["processor_calls", "processor_errors"], diagnoses=[calls_only, calls_only])
+    held = investigate(model, tmp_path / "held").document["result"]["diagnosis"]
+
+    assert corrected.document["result"]["diagnosis"]["root_cause"] == "processor_outage"
+    assert corrected.document["result"]["diagnosis"]["attempts"] == 2
+    assert (held["root_cause"], held["confidence"], held["claimed_root_cause"], held["attempts"]) == (
+        "unknown", "low", "processor_outage", 2)
+    assert held["summary"].startswith("No cause is reported: processor_outage can only be shown by processor_errors, "
+                                      "processor_health")
+    # the second question says why
+    retry = model.diagnosing[1][0][-1][1]
+    assert "Your cause processor_outage is shown only by these checks: processor_errors, processor_health." in retry
+    assert "unknown is a correct answer when the evidence does not show the cause" in retry
+    # and the first already told it which checks show which cause
+    first = model.diagnosing[0][0][1][1]
+    assert "- processor_outage: " in first and "Shown by: processor_errors, processor_health." in first
+    assert "A cause counts only when a quote from one of the checks that can show it" in first
+
+
+def test_a_quote_from_a_failed_check_does_not_show_a_cause():
+    runbook = {"causes": [{"name": "processor_outage", "shown_by": ["processor_errors", "processor_health"]}]}
+    evidence = {"processor_errors": {"is_error": True, "result": "Kubernetes did not answer (HTTP 403 Forbidden)."}}
+    answer = {"root_cause": "processor_outage"}
+
+    assert diagnosis.not_shown(answer, [cite("processor_errors", "HTTP 403 Forbidden")], evidence, runbook) == (
+        "processor_errors", "processor_health")
+    evidence["processor_errors"] = {"is_error": False, "result": ERRORS}
+    assert diagnosis.not_shown(answer, [cite("processor_errors", "Simulated outage set to 240s")], evidence, runbook) == ()
+    # a cause without the rule, and unknown, are never held back by it
+    assert diagnosis.not_shown({"root_cause": "unknown"}, [], evidence, runbook) == ()

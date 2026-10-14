@@ -1,0 +1,11 @@
+name: held-out-unavailable-database-case
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-held-out-unavailable-database-case.json
+description: >
+  Held out: made after tuning, never tuned on. Derived, not a live incident. The processor's lost database access, but its log and its health could not be read. What is left (its pods ready, Postgres up, calls unanswered) fits a failed dependency, an outage and an unreachable processor alike.
+caused_by: >
+  python -m evals.derive (evals/derive.py, HELD_OUT).
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [unknown]
+  key_checks: []

@@ -42,10 +42,13 @@ def main(argv: list[str] | None = None) -> int:
     evaluate = commands.add_parser("eval", help="replay the recorded scenarios and score the results")
     evaluate.add_argument("--label", default="eval", help="a word for this run, e.g. baseline (part of the results' file name)")
     evaluate.add_argument("--scenario", action="append", metavar="NAME", help="only this scenario (may be repeated)")
+    evaluate.add_argument("--held-out", action="store_true",
+                          help="the held-out scenarios (evals/scenarios/held-out), never used for tuning, instead of the others")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "eval":
-        return _eval(arguments.label, arguments.scenario)
+        return _eval(arguments.label if arguments.label != "eval" or not arguments.held_out else "held-out",
+                     arguments.scenario, arguments.held_out)
     if arguments.command == "list":
         return _list(arguments.n)
     if arguments.command == "show":
@@ -81,10 +84,10 @@ def _investigate(arguments) -> int:
     return DONE
 
 
-def _eval(label: str, only: list[str] | None) -> int:
+def _eval(label: str, only: list[str] | None, held_out: bool = False) -> int:
     """Exit code 0 when every scenario passed, 1 when some did not, 2 when the eval could not run."""
     try:
-        scenarios = scenario.load_all()
+        scenarios = scenario.load_all(scenario.HELD_OUT_DIR) if held_out else scenario.load_all()
         if only:
             unknown = sorted(set(only) - {item.name for item in scenarios})
             if unknown:

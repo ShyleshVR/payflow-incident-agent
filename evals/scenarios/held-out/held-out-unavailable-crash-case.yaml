@@ -1,0 +1,11 @@
+name: held-out-unavailable-crash-case
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-held-out-unavailable-crash-case.json
+description: >
+  Held out: made after tuning, never tuned on. Derived, not a live incident. The processor's crash loop, but its pod status and its health could not be read. What is left (nothing in its log, calls unanswered) fits a processor that is not running and one that cannot be reached alike.
+caused_by: >
+  python -m evals.derive (evals/derive.py, HELD_OUT).
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [unknown]
+  key_checks: []

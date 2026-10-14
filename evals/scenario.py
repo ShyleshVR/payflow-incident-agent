@@ -20,6 +20,9 @@ from agent import trace as traces
 
 EVALS_DIR = Path(__file__).resolve().parent
 SCENARIOS_DIR = EVALS_DIR / "scenarios"
+# Scenarios made after the prompts were tuned, and never tuned on: their score is the honest one.
+# Not part of an ordinary eval (load_all reads only the files directly in a folder).
+HELD_OUT_DIR = SCENARIOS_DIR / "held-out"
 FIXTURES_DIR = EVALS_DIR / "fixtures"
 
 

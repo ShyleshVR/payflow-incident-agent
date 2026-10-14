@@ -124,8 +124,9 @@ async def record_unchosen(state: Investigation, runtime: Runtime[Deps]) -> dict:
 
 async def diagnose(state: Investigation, runtime: Runtime[Deps]) -> dict:
     """The model names the cause and quotes the evidence for it; code checks every quote against
-    what the checks really returned. If some are not there, the model is told which and asked
-    once more. A cause left with no verified quote is reported as unknown."""
+    what the checks really returned. If some are not there, or none comes from a check that can
+    show the cause (the runbook's shown_by), the model is told and asked once more. A cause still
+    without such a quote is reported as unknown."""
     deps = runtime.context
     async with deps.trace.step("diagnose") as step:
         evidence = state["evidence"]
@@ -141,13 +142,15 @@ async def diagnose(state: Investigation, runtime: Runtime[Deps]) -> dict:
         messages = prompts.diagnose(state["alert_name"], state["alerts"], state["runbook"], evidence)
         answer = (await deps.model.ask(messages, shape, max_tokens, deps.diagnose_thinking)).answer.model_dump()
         verified, unverified = diagnosis.verify(answer["evidence"], evidence)
+        missing = diagnosis.not_shown(answer, verified, evidence, state["runbook"])
         attempts = 1
-        if unverified:
-            again = prompts.retry_diagnosis(messages, answer, unverified)
+        if unverified or missing:
+            again = prompts.retry_diagnosis(messages, answer, unverified, missing)
             answer = (await deps.model.ask(again, shape, max_tokens, deps.diagnose_thinking)).answer.model_dump()
             verified, unverified = diagnosis.verify(answer["evidence"], evidence)
+            missing = diagnosis.not_shown(answer, verified, evidence, state["runbook"])
             attempts = 2
-        concluded = diagnosis.conclude(answer, verified, unverified, attempts)
+        concluded = diagnosis.conclude(answer, verified, unverified, attempts, missing)
         concluded["set_aside"] = diagnosis.set_aside(answer, evidence)
         step["output"] = concluded
         return {"diagnosis": concluded}

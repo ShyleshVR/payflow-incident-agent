@@ -186,3 +186,25 @@ def test_a_replay_runs_with_the_runbook_as_it_is_now_not_as_it_was_recorded(tmp_
 
     assert recorded.document["result"]["checks_available"] == ["processor_calls", "sagas"]
     assert replayed.document["result"]["checks_available"] == ["processor_calls", "parked_payments"]
+
+
+def test_a_runbook_says_which_checks_can_show_each_cause():
+    loaded = runbooks.load("ProcessorCircuitOpen", config.RUNBOOKS_DIR)
+
+    shown_by = {cause.name: cause.shown_by for cause in loaded.causes}
+    assert shown_by == {"processor_outage": ("processor_errors", "processor_health"),
+                        "processor_not_running": ("processor_pods", "processor_health"),
+                        "processor_dependency_down": ("processor_errors", "processor_health", "database"),
+                        "processor_unreachable": ("processor_health", "processor_errors", "payment_service_errors")}
+    assert list(loaded.as_dict()["causes"][0]["shown_by"]) == ["processor_errors", "processor_health"]
+
+
+def test_shown_by_may_only_name_the_runbooks_own_causes_and_checks():
+    text = (config.RUNBOOKS_DIR / "ProcessorCircuitOpen.md").read_text(encoding="utf-8")
+    for wrong, why in (("  processor_outage: [processor_errors, processor_health]", "  cosmic_rays: [processor_errors]"),
+                       ("  processor_outage: [processor_errors, processor_health]", "  processor_outage: [vibes]"),
+                       ("  processor_outage: [processor_errors, processor_health]", "  processor_outage: []")):
+        changed = text.replace(wrong, why)
+        assert changed != text
+        with pytest.raises(runbooks.InvalidRunbook, match="shown_by"):
+            runbooks.parse(changed, "ProcessorCircuitOpen.md")
