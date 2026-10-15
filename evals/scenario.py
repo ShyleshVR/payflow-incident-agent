@@ -23,6 +23,8 @@ SCENARIOS_DIR = EVALS_DIR / "scenarios"
 # Scenarios made after the prompts were tuned, and never tuned on: their score is the honest one.
 # Not part of an ordinary eval (load_all reads only the files directly in a folder).
 HELD_OUT_DIR = SCENARIOS_DIR / "held-out"
+# Made on 2026-10-15 to compare models, before any model answered them, and never changed after.
+FRESH_DIR = SCENARIOS_DIR / "fresh"
 FIXTURES_DIR = EVALS_DIR / "fixtures"
 
 

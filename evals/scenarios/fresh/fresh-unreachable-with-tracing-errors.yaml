@@ -1,0 +1,11 @@
+name: fresh-unreachable-with-tracing-errors
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-fresh-unreachable-with-tracing-errors.json
+description: >
+  Fresh: made on 2026-10-15 for the model comparison, before any model answered it, and not changed after. Derived, not a live incident. The processor unreachable from payment-service, with payment-service also logging ERRORs about failing to export traces: real, and beside the point.
+caused_by: >
+  python -m evals.derive (evals/derive.py, FRESH), from a recording of 2026-10-14.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [processor_unreachable]
+  key_checks: [payment_service_errors]

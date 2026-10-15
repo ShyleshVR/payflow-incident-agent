@@ -1,0 +1,11 @@
+name: fresh-database-log-unreadable
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-fresh-database-log-unreadable.json
+description: >
+  Fresh: made on 2026-10-15 for the model comparison, before any model answered it, and not changed after. Derived, not a live incident. The processor's lost database access, but its log could not be read. Its health still shows 5xx answers and requests waiting for a database connection, which is what shows the cause.
+caused_by: >
+  python -m evals.derive (evals/derive.py, FRESH), from a recording of 2026-10-14.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [processor_dependency_down]
+  key_checks: [processor_health]

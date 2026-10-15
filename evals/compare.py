@@ -15,13 +15,16 @@ from pathlib import Path
 
 from evals.run_eval import RESULTS_DIR
 
+# The sets an eval can run: tuned on, held out (seen while tuning the rules), fresh (made for the comparison).
+PARTS = ("tuning", "held_out", "fresh")
+
 
 def rows(results: list[dict]) -> list[dict]:
     by_model: dict[str, dict] = {}
     for result in results:
-        held_out = all(row["scenario"].startswith("held-out-") for row in result["scenarios"])
         model = by_model.setdefault(result["model"], {"model": result["model"], "runs": []})
-        part = "held_out" if held_out else "tuning"
+        part = next((name for prefix, name in (("held-out-", "held_out"), ("fresh-", "fresh"))
+                     if all(row["scenario"].startswith(prefix) for row in result["scenarios"])), "tuning")
         if part in model:
             raise ValueError(f"two {part.replace('_', '-')} results for {result['model']}: {model[part]['id']} and {result['id']}")
         model[part] = result
@@ -30,7 +33,7 @@ def rows(results: list[dict]) -> list[dict]:
 
 
 def _rank(model: dict) -> tuple:
-    totals = [model[part]["totals"] for part in ("tuning", "held_out") if part in model]
+    totals = [model[part]["totals"] for part in PARTS if part in model]
     obeyed = sum(total["instruction_read"] - total["instruction_ignored"] for total in totals)
     seconds = _per_investigation(totals)
     return (-sum(total["passed"] for total in totals), -sum(total["cause_right"] for total in totals),
@@ -54,18 +57,20 @@ def render(models: list[dict], made_at: datetime) -> str:
               "instructions obeyed), then speed. Same prompts and rules for every model; the prompts were tuned on "
               "qwen3.5-9b, which favours it."), "",
              ("| Model | Tuning set passed | Root cause right | Citations verified | Planted instructions ignored | "
-             "Held-out passed | Held-out cause right | Seconds per investigation | Output tokens per investigation | Repeatable |"),
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "Held-out passed | Held-out cause right | Fresh passed | Fresh cause right | Seconds per investigation | "
+             "Output tokens per investigation | Repeatable |"),
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for model in models:
-        totals = [model[name]["totals"] for name in ("tuning", "held_out") if name in model]
+        totals = [model[name]["totals"] for name in PARTS if name in model]
         read = sum(total["instruction_read"] for total in totals)
         ignored = sum(total["instruction_ignored"] for total in totals)
         finished = sum(total["scenarios"] - total["errors"] for total in totals)
         tokens = round(sum(total["output_tokens"] for total in totals) / finished) if finished else None
-        repeatable = {model[name].get("prompt_cache") for name in ("tuning", "held_out") if name in model} == {False}
+        repeatable = {model[name].get("prompt_cache") for name in PARTS if name in model} == {False}
         lines.append(f"| {model['model']} | {part(model, 'tuning', 'passed')} | {part(model, 'tuning', 'cause_right')} | "
                      f"{part(model, 'tuning', 'citations_verified')} | {ignored} of the {read} read | "
                      f"{part(model, 'held_out', 'passed')} | {part(model, 'held_out', 'cause_right')} | "
+                     f"{part(model, 'fresh', 'passed')} | {part(model, 'fresh', 'cause_right')} | "
                      f"{_per_investigation(totals)} | {tokens} | {'yes' if repeatable else 'no'} |")
     lines += ["", "Made from: " + ", ".join(f"`{run}`" for model in models for run in model["runs"])]
     return "\n".join(lines) + "\n"

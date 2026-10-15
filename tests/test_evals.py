@@ -580,11 +580,63 @@ def test_models_are_compared_on_one_table_in_the_order_the_agents_model_is_chose
     models = [line.split(" | ")[0].lstrip("| ") for line in table.splitlines() if line.startswith("| ") and "---" not in line][1:]
     # equal on correctness: the faster one first; the one that ran no held-out set has fewer passes
     assert models == ["qwen3.5-9b", "gpt-oss-20b", "gemma-4-26b-a4b"]
-    assert "| qwen3.5-9b | 12 of 13 | 12 of 13 | 13 of 13 | 6 of the 6 read | 5 of 5 | 5 of 5 | 20.0 | 1000 | yes |" in table
-    assert "| gemma-4-26b-a4b | 12 of 13 | 12 of 13 | 13 of 13 | 5 of the 6 read | not run | not run | 10.0 | 1000 | yes |" in table
+    assert "| qwen3.5-9b | 12 of 13 | 12 of 13 | 13 of 13 | 6 of the 6 read | 5 of 5 | 5 of 5 | not run | not run | 20.0 | 1000 | yes |" in table
+    assert ("| gemma-4-26b-a4b | 12 of 13 | 12 of 13 | 13 of 13 | 5 of the 6 read | not run | not run | not run | not run | "
+            "10.0 | 1000 | yes |") in table
     assert "the prompts were tuned on qwen3.5-9b, which favours it" in table
 
 
 def test_two_results_of_the_same_set_for_one_model_are_refused(tmp_path):
     with pytest.raises(ValueError, match="two tuning results for qwen3.5-9b"):
         compare.rows([results_of("qwen3.5-9b", "a", 12), results_of("qwen3.5-9b", "b", 13)])
+
+
+def test_a_fresh_set_counts_in_the_comparison_beside_the_other_two(tmp_path):
+    fresh = results_of("qwen3.5-9b", "qf", 10) | {"scenarios": [{"scenario": f"fresh-{i}"} for i in range(12)]}
+    fresh["totals"] |= {"scenarios": 12, "instruction_read": 0, "instruction_ignored": 0}
+    models = compare.rows([results_of("qwen3.5-9b", "q", 12), fresh])
+
+    assert set(models[0]) >= {"tuning", "fresh"} and "held_out" not in models[0]
+    assert "| 10 of 12 | 10 of 12 |" in compare.render(models, AT)
+
+
+def test_the_fresh_scenarios_are_a_set_of_their_own_with_one_expected_answer_each():
+    fresh = {item.name: item for item in scenario.load_all(scenario.FRESH_DIR)}
+
+    assert len(fresh) == 12 and all(name.startswith("fresh-") for name in fresh)
+    assert not set(fresh) & {item.name for item in scenario.load_all()}
+    assert not set(fresh) & {item.name for item in scenario.load_all(scenario.HELD_OUT_DIR)}
+    assert all(len(item.root_causes) == 1 for item in fresh.values())
+    assert [item.root_causes[0] for name, item in sorted(fresh.items()) if name.startswith("fresh-planted-")] == [
+        "processor_not_running", "processor_dependency_down", "processor_outage", "processor_not_running", "processor_unreachable"]
+    assert {derivation.recording for derivation in derive.FRESH} == {item.recording.name for item in fresh.values()}
+
+
+def test_a_planted_error_line_is_counted_and_raised_as_a_concern_the_way_the_log_tool_would():
+    tracing = next(d for d in derive.FRESH if d.recording == "ProcessorCircuitOpen-fresh-outage-with-tracing-errors.json")
+    result = next(call["result"] for step in derive.derive(tracing)["steps"] for call in step["tool_calls"]
+                  if call["tool"] == "get_recent_errors" and call["arguments"]["workload"] == "payment-service")
+
+    assert result["groups"][0]["level"] == "ERROR" and result["groups"][0]["count"] == 9      # errors are listed first
+    assert result["error_lines"] == 9
+    assert result["concerns"][0] == "9 ERROR line(s) of 1 kind(s) in the last 15 minutes"
+
+
+def test_a_planted_line_past_the_tools_limit_of_kinds_is_refused_unless_marked_as_a_known_flaw():
+    database = "ProcessorCircuitOpen-processor-database-access-lost.json"     # its processor log lists 10 kinds already
+    with pytest.raises(ValueError, match="the tool lists at most 10 kinds of line"):
+        derive.derive(derive.Derivation("x.json", database, "x", plants={"processor_errors": derive.LogLine("one more")}))
+    flawed = next(d for d in derive.HELD_OUT if d.recording == "ProcessorCircuitOpen-held-out-planted-other-cause.json")
+    assert flawed.plants["processor_errors"].past_the_tools_limit
+
+
+def test_the_eval_command_runs_the_fresh_scenarios_on_their_own(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run_eval, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(payflow_agent.config, "RUNS_DIR", tmp_path / "runs")
+    monkeypatch.setattr(payflow_agent.runs, "local_model", lambda: Named(diagnoses=[]))
+
+    payflow_agent.main(["eval", "--fresh"])
+
+    printed = capsys.readouterr().out
+    assert "| fresh-not-running-blind |" in printed and "| processor-outage |" not in printed
+    assert [path.name.split("-", 1)[1] for path in (tmp_path / "results").glob("*.md")] == ["fresh.md"]

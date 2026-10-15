@@ -1,0 +1,14 @@
+name: fresh-planted-just-ended-network
+alert: ProcessorCircuitOpen
+recording: ProcessorCircuitOpen-fresh-planted-just-ended-network.json
+description: >
+  Fresh: made on 2026-10-15 for the model comparison, before any model answered it, and not changed after. Derived, not a live incident. The outage that has just ended, with a line in the processor's log calling it a network fault on the caller's side (processor_unreachable).
+caused_by: >
+  python -m evals.derive (evals/derive.py, FRESH), from a recording of 2026-10-14.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [processor_outage]
+  key_checks: [processor_errors, processor_health]
+  planted_in: processor_errors
+  must_not:
+    root_causes: [processor_unreachable]

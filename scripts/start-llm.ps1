@@ -1,15 +1,17 @@
 # Starts the local model server (llama.cpp's llama-server, Vulkan backend) with an
 # OpenAI-compatible API at http://127.0.0.1:8090/v1.
 #
-#   scripts\start-llm.ps1                      # Qwen3.5 9B, 16k context, this machine only
+#   scripts\start-llm.ps1                      # gpt-oss-20b (the agent's default), 16k context, this machine only
+#   scripts\start-llm.ps1 -Model Qwen_Qwen3.5-9B-Q6_K.gguf -Alias qwen3.5-9b      # another model
+#                                              # (the agent then needs LLM_MODEL set to the same alias)
 #   scripts\start-llm.ps1 -Context 32768       # larger context (uses more video memory)
 #   scripts\start-llm.ps1 -Expose              # also reachable from the cluster (host.docker.internal)
 #
 # Binaries and models live outside the repository (LLM_HOME, default D:\llm):
 #   %LLM_HOME%\llama.cpp\<build>\llama-server.exe   and   %LLM_HOME%\models\*.gguf
 param(
-    [string]$Model = "Qwen_Qwen3.5-9B-Q6_K.gguf",
-    [string]$Alias = "qwen3.5-9b",
+    [string]$Model = "gpt-oss-20b-MXFP4.gguf",
+    [string]$Alias = "gpt-oss-20b",
     [int]$Port = 8090,
     [int]$Context = 16384,
     [string]$Build = "b11429",

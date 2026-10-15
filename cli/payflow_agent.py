@@ -44,11 +44,13 @@ def main(argv: list[str] | None = None) -> int:
     evaluate.add_argument("--scenario", action="append", metavar="NAME", help="only this scenario (may be repeated)")
     evaluate.add_argument("--held-out", action="store_true",
                           help="the held-out scenarios (evals/scenarios/held-out), never used for tuning, instead of the others")
+    evaluate.add_argument("--fresh", action="store_true",
+                          help="the fresh scenarios (evals/scenarios/fresh), made to compare models, instead of the others")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "eval":
-        return _eval(arguments.label if arguments.label != "eval" or not arguments.held_out else "held-out",
-                     arguments.scenario, arguments.held_out)
+        which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else None
+        return _eval(arguments.label if arguments.label != "eval" or not which else which, arguments.scenario, which)
     if arguments.command == "list":
         return _list(arguments.n)
     if arguments.command == "show":
@@ -84,10 +86,11 @@ def _investigate(arguments) -> int:
     return DONE
 
 
-def _eval(label: str, only: list[str] | None, held_out: bool = False) -> int:
+def _eval(label: str, only: list[str] | None, which: str | None = None) -> int:
     """Exit code 0 when every scenario passed, 1 when some did not, 2 when the eval could not run."""
     try:
-        scenarios = scenario.load_all(scenario.HELD_OUT_DIR) if held_out else scenario.load_all()
+        folder = {"held-out": scenario.HELD_OUT_DIR, "fresh": scenario.FRESH_DIR}.get(which, scenario.SCENARIOS_DIR)
+        scenarios = scenario.load_all(folder)
         if only:
             unknown = sorted(set(only) - {item.name for item in scenarios})
             if unknown:

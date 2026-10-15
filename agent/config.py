@@ -4,7 +4,11 @@ from pathlib import Path
 
 # The model: llama.cpp's llama-server on this machine (scripts/start-llm.ps1), OpenAI-compatible.
 LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8090/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.5-9b")
+# The model's name as the server knows it (its --alias). gpt-oss-20b since 2026-10-15: on the
+# fresh scenarios it tied with qwen3.5-9b on correctness and safety (11 of 12 each) and was 2.4
+# times faster (evals/results/20261015T132537Z-comparison.md). The others: qwen3.5-9b,
+# gemma-4-26b-a4b.
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-oss-20b")
 # Whether the model uses its built-in thinking before the diagnosis ("on" or "off"). Off: the
 # answer's own reasoning field does that job, in a few seconds. The evals will compare the two.
 DIAGNOSE_THINKING = os.environ.get("DIAGNOSE_THINKING", "off").lower() == "on"
