@@ -7,7 +7,7 @@ import pytest
 
 from agent.llm import ModelError, ModelUnavailable
 from cli import payflow_agent
-from evals import derive, run_eval, scenario
+from evals import compare, derive, run_eval, scenario
 from evals.grade import grade
 from tests.fakes import ScriptedModel
 
@@ -552,3 +552,39 @@ def test_the_eval_command_runs_the_held_out_scenarios_on_their_own(tmp_path, mon
     assert "-held-out\n" in printed and "| held-out-unavailable-crash-case |" in printed
     assert "| processor-outage |" not in printed
     assert [path.name.split("-", 1)[1] for path in (tmp_path / "results").glob("*.md")] == ["held-out.md"]
+
+
+def results_of(model, label, passed, *, held_out=False, seconds=20.0, obeyed=0, cache=False):
+    scenarios = 5 if held_out else 13
+    names = [f"held-out-{i}" if held_out else f"scenario-{i}" for i in range(scenarios)]
+    return {"id": f"20261015T120000Z-{label}", "model": model, "prompt_cache": cache,
+            "scenarios": [{"scenario": name} for name in names],
+            "totals": {"scenarios": scenarios, "errors": 0, "passed": passed, "cause_right": passed, "citations_verified": scenarios,
+                       "instruction_read": 0 if held_out else 6, "instruction_ignored": 0 if held_out else 6 - obeyed,
+                       "seconds": seconds * scenarios, "output_tokens": 1000 * scenarios}}
+
+
+def test_models_are_compared_on_one_table_in_the_order_the_agents_model_is_chosen(tmp_path):
+    files = []
+    for result in (results_of("qwen3.5-9b", "q", 12), results_of("qwen3.5-9b", "qh", 5, held_out=True),
+                   results_of("gpt-oss-20b", "g", 12, seconds=40.0), results_of("gpt-oss-20b", "gh", 5, held_out=True, seconds=40.0),
+                   results_of("gemma-4-26b-a4b", "m", 12, obeyed=1, seconds=10.0)):
+        path = tmp_path / f"{result['id']}.json"
+        path.write_text(json.dumps(result), encoding="utf-8")
+        files.append(str(path))
+
+    written = compare.main(files, results_dir=tmp_path, now=lambda: AT)
+
+    table = written.read_text(encoding="utf-8")
+    assert written.name == "20261012T153000Z-comparison.md"
+    models = [line.split(" | ")[0].lstrip("| ") for line in table.splitlines() if line.startswith("| ") and "---" not in line][1:]
+    # equal on correctness: the faster one first; the one that ran no held-out set has fewer passes
+    assert models == ["qwen3.5-9b", "gpt-oss-20b", "gemma-4-26b-a4b"]
+    assert "| qwen3.5-9b | 12 of 13 | 12 of 13 | 13 of 13 | 6 of the 6 read | 5 of 5 | 5 of 5 | 20.0 | 1000 | yes |" in table
+    assert "| gemma-4-26b-a4b | 12 of 13 | 12 of 13 | 13 of 13 | 5 of the 6 read | not run | not run | 10.0 | 1000 | yes |" in table
+    assert "the prompts were tuned on qwen3.5-9b, which favours it" in table
+
+
+def test_two_results_of_the_same_set_for_one_model_are_refused(tmp_path):
+    with pytest.raises(ValueError, match="two tuning results for qwen3.5-9b"):
+        compare.rows([results_of("qwen3.5-9b", "a", 12), results_of("qwen3.5-9b", "b", 13)])

@@ -274,3 +274,14 @@ def test_the_servers_prompt_cache_is_off_unless_asked_for():
     # the default, of the client and of the setting it is built from
     assert LocalModel("http://model/v1", "qwen3.5-9b").cache_prompt is False
     assert run.config.LLM_CACHE_PROMPT is False
+
+
+def test_each_model_is_asked_with_its_own_switch_for_thinking():
+    shape = prompts.next_checks_shape(ALL_CHECKS, first_round=True)
+    sent = {}
+    for name in ("qwen3.5-9b", "gpt-oss-20b"):
+        client, seen = model_server('{"reasoning":"r","next_checks":["processor_calls"]}')
+        asyncio.run(LocalModel("http://model/v1", name, http_async_client=client).ask([("human", "x")], shape, 300))
+        sent[name] = seen[0]["chat_template_kwargs"]
+
+    assert sent == {"qwen3.5-9b": {"enable_thinking": False}, "gpt-oss-20b": {"reasoning_effort": "low"}}

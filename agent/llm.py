@@ -36,6 +36,16 @@ class Model(Protocol):
     async def ask(self, messages: Messages, shape: type[BaseModel], max_tokens: int, thinking: bool = False) -> Reply: ...
 
 
+def thinking_switch(model_name: str, thinking: bool) -> dict:
+    """The chat template's own switch for a model's built-in thinking, sent with every request.
+    Off, or as low as the model allows, unless a step asks for it: the answer's reasoning field
+    does that job, and thinking counts against max_tokens. gpt-oss cannot stop reasoning; its
+    lowest effort is the nearest to off. Other models (Qwen) take enable_thinking."""
+    if model_name.startswith("gpt-oss"):
+        return {"reasoning_effort": "high" if thinking else "low"}
+    return {"enable_thinking": thinking}
+
+
 class LocalModel:
     def __init__(self, url: str, name: str, http_async_client=None, cache_prompt: bool = False):
         self._url = url
@@ -55,9 +65,9 @@ class LocalModel:
                 # the request when an answer shape is asked for, and an answer without a limit
                 # can run until the context is full.
                 "max_tokens": max_tokens,
-                # Qwen thinks by default, and thinking counts against max_tokens: off unless a
-                # step asks for it (per request, through llama-server's chat template).
-                "chat_template_kwargs": {"enable_thinking": thinking},
+                # Thinking counts against max_tokens: off unless a step asks for it (per request,
+                # through llama-server's chat template; each model has its own switch).
+                "chat_template_kwargs": thinking_switch(self.name, thinking),
                 # llama-server's own setting, on unless a request says otherwise
                 "cache_prompt": self.cache_prompt,
             },
