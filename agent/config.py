@@ -2,6 +2,20 @@
 import os
 from pathlib import Path
 
+
+def _load_env_file(path: Path) -> None:
+    """KEY=VALUE lines from the local .env file (git-ignored), for values that must not be in the
+    code, such as AGENT_TOKEN. The real environment wins. (The MCP server reads the same file.)"""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.strip().partition("=")
+        if separator and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_env_file(Path(__file__).resolve().parent.parent / ".env")
+
 # The model: llama.cpp's llama-server on this machine (scripts/start-llm.ps1), OpenAI-compatible.
 LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8090/v1")
 # The model's name as the server knows it (its --alias). gpt-oss-20b since 2026-10-15: on the
