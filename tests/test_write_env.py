@@ -45,3 +45,41 @@ def test_without_the_token_file_only_the_client_secret_is_written(tmp_path, writ
 
     assert (tmp_path / ".env").read_text(encoding="utf-8") == "PAYFLOW_CLIENT_SECRET=client-s3cret\n"
     assert "PayFlow does not send its alerts to the agent" in capsys.readouterr().out
+
+
+def test_the_operator_secret_goes_into_env_too_and_is_never_printed(tmp_path, write_env, monkeypatch, capsys):
+    root = payflow(tmp_path)
+    auth = root / "k8s" / "overlays" / "local" / "secrets" / "auth.env"
+    auth.write_text(auth.read_text(encoding="utf-8") + "incident-agent-operator-client-secret=operator-s3cret\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["write_env.py", str(root)])
+
+    assert write_env.main() == 0
+
+    assert (tmp_path / ".env").read_text(encoding="utf-8").splitlines() == [
+        "PAYFLOW_CLIENT_SECRET=client-s3cret", "PAYFLOW_OPERATOR_CLIENT_SECRET=operator-s3cret"]
+    printed = capsys.readouterr().out
+    assert "PAYFLOW_OPERATOR_CLIENT_SECRET" in printed and "operator-s3cret" not in printed
+
+
+def test_without_the_operator_secret_the_rest_is_written_and_the_gap_is_named(tmp_path, write_env, monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["write_env.py", str(payflow(tmp_path))])
+
+    assert write_env.main() == 0
+
+    assert "cannot carry out approved retries" in capsys.readouterr().out
+
+
+def test_the_mcp_server_never_holds_the_operator_secret(tmp_path, monkeypatch):
+    import os
+
+    from mcp_server import config
+    env = tmp_path / ".env"
+    env.write_text("SOMETHING_ELSE=kept\nPAYFLOW_OPERATOR_CLIENT_SECRET=from-the-file\n", encoding="utf-8")
+    monkeypatch.delenv("SOMETHING_ELSE", raising=False)
+    monkeypatch.setenv("PAYFLOW_OPERATOR_CLIENT_SECRET", "inherited")
+
+    config._load_env_file(env)
+
+    assert os.environ.get("SOMETHING_ELSE") == "kept"
+    assert "PAYFLOW_OPERATOR_CLIENT_SECRET" not in os.environ
+    monkeypatch.delenv("SOMETHING_ELSE")

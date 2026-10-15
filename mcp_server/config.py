@@ -2,16 +2,21 @@
 import os
 from pathlib import Path
 
+# The agent's operator login can retry sagas. The .env file is shared with the agent, but this
+# server's tools are read-only, so it never holds that secret, from the file or inherited.
+NOT_FOR_THIS_SERVER = ("PAYFLOW_OPERATOR_CLIENT_SECRET",)
+
 
 def _load_env_file(path: Path) -> None:
     """KEY=VALUE lines from a local .env file (git-ignored), for values that must not be in the
     code. The real environment wins: in the cluster a Secret provides them and there is no file."""
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, separator, value = line.strip().partition("=")
-        if separator and key and not key.startswith("#"):
-            os.environ.setdefault(key.strip(), value.strip())
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.strip().partition("=")
+            if separator and key and not key.startswith("#") and key.strip() not in NOT_FOR_THIS_SERVER:
+                os.environ.setdefault(key.strip(), value.strip())
+    for key in NOT_FOR_THIS_SERVER:
+        os.environ.pop(key, None)
 
 
 _load_env_file(Path(__file__).resolve().parent.parent / ".env")

@@ -1,6 +1,7 @@
 """Writes the agent's secrets into .env (git-ignored), from PayFlow's local secrets: its PayFlow
-client secret, and, when PayFlow sends its alerts to the agent, the token those alerts carry
-(secrets/incident-agent-token, made by PayFlow's scripts/generate-local-secrets.sh --agent).
+client secret (the read-only tools), its operator client secret (retrying sagas a person approved;
+the MCP server never loads it), and, when PayFlow sends its alerts to the agent, the token those
+alerts carry (secrets/incident-agent-token, made by PayFlow's scripts/generate-local-secrets.sh --agent).
 
     .venv\\Scripts\\python.exe scripts\\write_env.py                    # PayFlow at D:\\Payments-Engine
     .venv\\Scripts\\python.exe scripts\\write_env.py C:\\code\\payflow
@@ -13,6 +14,8 @@ from pathlib import Path
 
 KEY_IN_PAYFLOW = "incident-agent-client-secret"
 KEY_IN_ENV = "PAYFLOW_CLIENT_SECRET"
+OPERATOR_KEY_IN_PAYFLOW = "incident-agent-operator-client-secret"
+OPERATOR_KEY_IN_ENV = "PAYFLOW_OPERATOR_CLIENT_SECRET"
 TOKEN_FILE = "incident-agent-token"
 TOKEN_IN_ENV = "AGENT_TOKEN"
 
@@ -23,14 +26,17 @@ def main() -> int:
     if not source.is_file():
         print(f"{source} not found. Run scripts/generate-local-secrets.sh in PayFlow first.")
         return 1
-    secret = next((line.partition("=")[2].strip() for line in source.read_text(encoding="utf-8").splitlines()
-                   if line.startswith(KEY_IN_PAYFLOW + "=")), "")
+    lines = source.read_text(encoding="utf-8").splitlines()
+    secret = _value(lines, KEY_IN_PAYFLOW)
     if not secret:
         print(f"{source} has no {KEY_IN_PAYFLOW}. PayFlow needs the incident-agent client "
               "(branch feature/incident-agent-access), then scripts/generate-local-secrets.sh.")
         return 1
 
     values = {KEY_IN_ENV: secret}
+    operator_secret = _value(lines, OPERATOR_KEY_IN_PAYFLOW)
+    if operator_secret:
+        values[OPERATOR_KEY_IN_ENV] = operator_secret
     token_file = source.parent / TOKEN_FILE
     if token_file.is_file():
         values[TOKEN_IN_ENV] = token_file.read_text(encoding="utf-8").strip()
@@ -40,9 +46,16 @@ def main() -> int:
             if line.partition("=")[0] not in values]
     target.write_text("\n".join([*kept, *(f"{key}={value}" for key, value in values.items())]) + "\n", encoding="utf-8")
     print(f"wrote {', '.join(values)} to {target}")
+    if OPERATOR_KEY_IN_ENV not in values:
+        print(f"(no {OPERATOR_KEY_IN_PAYFLOW} in {source}: the agent cannot carry out approved retries; "
+              "run PayFlow's scripts/generate-local-secrets.sh again)")
     if TOKEN_IN_ENV not in values:
         print(f"(no {token_file}: PayFlow does not send its alerts to the agent; see its generate-local-secrets.sh --agent)")
     return 0
+
+
+def _value(lines: list[str], key: str) -> str:
+    return next((line.partition("=")[2].strip() for line in lines if line.startswith(key + "=")), "")
 
 
 if __name__ == "__main__":

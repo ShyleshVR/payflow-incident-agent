@@ -46,5 +46,12 @@ AGENT_DB = Path(os.environ.get("AGENT_DB", Path(__file__).resolve().parent.paren
 AGENT_CHECKPOINTS = Path(os.environ.get("AGENT_CHECKPOINTS", Path(__file__).resolve().parent.parent / "runs" / "checkpoints.sqlite"))
 # When set, every request to the service must carry "Authorization: Bearer <this>".
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN") or None
+# PayFlow, for the one thing the agent itself does there: retrying parked sagas a person approved
+# (agent/operator.py), as the service client "incident-agent-operator" (payments:operate,
+# payouts:operate). The MCP server's read-only tools never get this secret (mcp_server/config.py
+# skips it). No default: scripts/write_env.py copies it from PayFlow's local secrets into .env.
+PAYFLOW_URL = os.environ.get("PAYFLOW_URL", "http://localhost")
+PAYFLOW_OPERATOR_CLIENT_ID = os.environ.get("PAYFLOW_OPERATOR_CLIENT_ID", "incident-agent-operator")
+PAYFLOW_OPERATOR_CLIENT_SECRET = os.environ.get("PAYFLOW_OPERATOR_CLIENT_SECRET", "")
 # One JSON trace per investigation (git-ignored).
 RUNS_DIR = Path(os.environ.get("RUNS_DIR", Path(__file__).resolve().parent.parent / "runs"))
