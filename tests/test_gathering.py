@@ -36,7 +36,7 @@ def test_the_model_chooses_round_by_round_and_code_runs_what_it_chose(tmp_path):
     trace, tools = investigate(model, tmp_path)
 
     assert steps(trace) == ["intake", "load_runbook", "choose_checks", "gather", "choose_checks", "gather", "choose_checks",
-                            "record_unchosen", "diagnose", "report"]
+                            "record_unchosen", "diagnose", "screen", "report"]
     result = trace.document["result"]
     assert (result["checks_run"], result["rounds"], result["stopped_because"]) == (
         ["processor_calls", "processor_pods", "processor_errors"], 2, "the model had seen enough")
@@ -153,8 +153,7 @@ def test_every_model_call_and_its_answer_is_in_the_trace_under_the_step_that_ask
 def test_the_checks_the_model_did_not_choose_are_recorded_apart_so_a_replay_can_choose_differently(tmp_path):
     recorded, tools = investigate(ScriptedModel(["processor_calls"]), tmp_path / "live")
 
-    unchosen = load(recorded.path)["steps"][-3]
-    assert unchosen["step"] == "record_unchosen"
+    unchosen = next(step for step in load(recorded.path)["steps"] if step["step"] == "record_unchosen")
     assert unchosen["output"]["checks"] == ALL_CHECKS[1:]
     assert len(unchosen["tool_calls"]) == 7
     assert recorded.document["result"]["checks_run"] == ["processor_calls"]      # they are not evidence

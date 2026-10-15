@@ -48,14 +48,32 @@ def set_aside(answer: dict, evidence: dict[str, dict]) -> list[dict]:
     to the operator as a warning, so only what can be such text is kept: a quote found in one of
     the OUTSIDE_TEXT_FIELDS of a check that ran (not in a count, a state, a tool's own concern or
     a failed check's error), each once."""
-    kept = []
-    outside = {name: {"is_error": False, "result": " | ".join(_outside_text(item["result"], OUTSIDE_TEXT_FIELDS[item["tool"]]))}
-               for name, item in evidence.items() if not item.get("is_error") and item.get("tool") in OUTSIDE_TEXT_FIELDS}
+    outside = {name: {"is_error": False, "result": " | ".join(text for check, text in outside_texts(evidence) if check == name)}
+               for name in evidence}
     found, _ = verify(answer.get("set_aside") or [], outside)
-    for item in found:
-        if not any((item["check"], _plain(item["quote"])) == (other["check"], _plain(other["quote"])) for other in kept):
-            kept.append({"check": item["check"], "quote": item["quote"]})
-    return kept
+    return merge_set_aside([], found)
+
+
+def outside_texts(evidence: dict[str, dict]) -> list[tuple[str, str]]:
+    """(check, text) for each piece of text from outside PayFlow's operators that the checks
+    returned (OUTSIDE_TEXT_FIELDS of checks that ran), each once."""
+    texts = []
+    for name, item in evidence.items():
+        if item.get("is_error") or item.get("tool") not in OUTSIDE_TEXT_FIELDS:
+            continue
+        for text in _outside_text(item["result"], OUTSIDE_TEXT_FIELDS[item["tool"]]):
+            if (name, text) not in texts:
+                texts.append((name, text))
+    return texts
+
+
+def merge_set_aside(kept: list[dict], more: list[dict]) -> list[dict]:
+    """kept, then each of more not already in it (the same check and the same words)."""
+    merged = [dict(item) for item in kept]
+    for item in more:
+        if not any((item["check"], _plain(item["quote"])) == (other["check"], _plain(other["quote"])) for other in merged):
+            merged.append({"check": item["check"], "quote": item["quote"]})
+    return merged
 
 
 def _outside_text(value, fields: frozenset[str], field: str | None = None) -> list[str]:

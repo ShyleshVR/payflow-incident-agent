@@ -20,7 +20,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from agent import diagnosis, prompts, runbooks
-from agent.llm import Model
+from agent.llm import Model, ModelError
 from agent.state import Investigation
 from agent.tools import Tools
 from agent.trace import Trace
@@ -29,6 +29,7 @@ from agent.trace import Trace
 MAX_ROUNDS = 4
 CHOOSE_MAX_TOKENS = 700
 DIAGNOSE_MAX_TOKENS = 1500
+SCREEN_MAX_TOKENS = 1000  # 500 cut off one gpt-oss answer: it reasons a little before answering
 # With thinking on, the thinking is counted against the limit as well.
 DIAGNOSE_MAX_TOKENS_THINKING = 6000
 
@@ -156,6 +157,31 @@ async def diagnose(state: Investigation, runtime: Runtime[Deps]) -> dict:
         return {"diagnosis": concluded}
 
 
+async def screen(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """One narrow question about only the text outside parties wrote (log lines, error causes, a
+    saga's last error): does any of it speak to a reader, an agent or an operator? What the model
+    quotes, and code finds there, joins what the diagnosis set aside, and the report shows it.
+    The diagnosis is not touched. Nothing to screen, nothing asked; a garbled answer is noted and
+    the investigation goes on (the answer is a warning for the operator, not the cause)."""
+    deps = runtime.context
+    async with deps.trace.step("screen") as step:
+        texts = diagnosis.outside_texts(state["evidence"])
+        if not texts:
+            step["output"] = {"texts": 0, "found": []}
+            return {}
+        shape = prompts.screening_shape(sorted({check for check, _ in texts}))
+        try:
+            reply = await deps.model.ask(prompts.screen_outside_text(texts), shape, SCREEN_MAX_TOKENS)
+        except ModelError as e:
+            step["output"] = {"texts": len(texts), "found": [], "error": str(e)}
+            return {}
+        found = diagnosis.set_aside({"set_aside": reply.answer.model_dump().get("addressed_to_a_reader") or []},
+                                    state["evidence"])
+        step["output"] = {"texts": len(texts), "found": found}
+        set_aside = diagnosis.merge_set_aside(state["diagnosis"].get("set_aside", []), found)
+        return {"diagnosis": state["diagnosis"] | {"set_aside": set_aside}}
+
+
 async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
     """What the investigation gathered and concluded."""
     async with runtime.context.trace.step("report") as step:
@@ -199,7 +225,7 @@ def _finding(item: dict) -> list[str]:
 
 def build_graph():
     graph = StateGraph(Investigation, context_schema=Deps)
-    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, report):
+    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, report):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", lambda state: "load_runbook" if state["status"] == "investigating" else END,
@@ -210,6 +236,7 @@ def build_graph():
     graph.add_conditional_edges("gather", lambda state: "record_unchosen" if state.get("gathering") else "choose_checks",
                                 ["record_unchosen", "choose_checks"])
     graph.add_edge("record_unchosen", "diagnose")
-    graph.add_edge("diagnose", "report")
+    graph.add_edge("diagnose", "screen")
+    graph.add_edge("screen", "report")
     graph.add_edge("report", END)
     return graph.compile()

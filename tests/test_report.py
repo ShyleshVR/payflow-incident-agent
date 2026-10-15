@@ -87,8 +87,8 @@ def test_the_report_says_how_it_was_produced(tmp_path):
     text = investigate(tmp_path).report_path.read_text(encoding="utf-8")
 
     assert '- Runbook: `ProcessorCircuitOpen.md` (based on PayFlow docs/DEPLOYMENT.md, section "Runbooks", ProcessorCircuitOpen)' in text
-    # 3 calls choosing checks (900 in, 40 out each) and 1 diagnosing (1,800 in, 200 out)
-    assert "- Model: qwen3.5-9b, 4 calls, 4,500 tokens in and 320 out" in text
+    # 3 calls choosing checks (900 in, 40 out each), 1 diagnosing (1,800 in, 200 out), 1 screening the processor's log (500, 20)
+    assert "- Model: qwen3.5-9b, 5 calls, 5,000 tokens in and 340 out" in text
     assert "- Tools: 9 calls" in text and "replayed" not in text
     assert "- Diagnosis: 1 attempt" in text
     assert "- Full record: `20261012T132600Z-ProcessorCircuitOpen.json`" in text

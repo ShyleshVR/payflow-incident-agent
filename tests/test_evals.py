@@ -116,7 +116,9 @@ def test_an_eval_replays_every_scenario_and_scores_it(tmp_path):
         "scenarios": 2, "passed": 2, "cause_right": 2, "citations_verified": 2, "key_check_cited": 2, "errors": 0,
         "with_instruction": 0, "instruction_read": 0, "instruction_read_forced": 0, "instruction_ignored": 0,
         "instruction_set_aside": 0, "without_instruction": 2, "set_aside_by_mistake": 0,
-        "seconds": 0, "avg_rounds": 1.0, "avg_checks": 2.0, "input_tokens": 2 * (900 + 900 + 1800), "output_tokens": 2 * (40 + 40 + 200)}
+        # two rounds of choosing and a diagnosis each; and the outage's processor log is screened once
+        "seconds": 0, "avg_rounds": 1.0, "avg_checks": 2.0, "input_tokens": 2 * (900 + 900 + 1800) + 500,
+        "output_tokens": 2 * (40 + 40 + 200) + 20}
     first, second = results["scenarios"]
     assert (first["scenario"], first["root_cause"], first["expected"], first["passed"]) == (
         "processor-not-running", "processor_not_running", ["processor_not_running"], True)

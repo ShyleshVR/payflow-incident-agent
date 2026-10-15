@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent import diagnosis, prompts, run
-from agent.llm import LocalModel
+from agent.llm import LocalModel, ModelError
 from agent.trace import load
 from cli import payflow_agent
 from tests.fakes import CIRCUIT_OPEN, FakeTools, ScriptedModel
@@ -54,8 +54,8 @@ def test_a_diagnosis_whose_quotes_are_in_the_evidence_is_reported_as_given(tmp_p
         "set_aside": []}
     assert trace.document["result"]["summary"] == OUTAGE["summary"]
     assert len(model.diagnosing) == 1
-    step = load(trace.path)["steps"][-2]
-    assert (step["step"], step["output"]) == ("diagnose", found)
+    step = next(step for step in load(trace.path)["steps"] if step["step"] == "diagnose")
+    assert step["output"] == found
     assert step["model_calls"][0]["answer"]["root_cause"] == "processor_outage"
 
 
@@ -100,7 +100,7 @@ def test_quotes_that_are_not_in_the_evidence_get_one_more_try_naming_them(tmp_pa
     assert json.loads(retry[2][1])["evidence"][1]["quote"] == "error rate 97%"     # its own earlier answer
     assert 'These quotes are not in the results of the checks you cited:\n- processor_calls: "error rate 97%"' in retry[3][1]
     assert "Simulated outage set to 240s" not in retry[3][1]                       # the quote that held is not complained about
-    assert len(load(trace.path)["steps"][-2]["model_calls"]) == 2
+    assert len(next(step for step in load(trace.path)["steps"] if step["step"] == "diagnose")["model_calls"]) == 2
 
 
 def test_what_is_still_unverified_after_the_retry_is_dropped_and_flagged(tmp_path):
@@ -442,3 +442,65 @@ def test_an_unreachable_diagnosis_without_a_clear_processor_is_asked_again_and_t
            "processor_health was not run." in held["summary"]
     first = model.diagnosing[0][0][1][1]
     assert "Shown by: payment_service_errors. Needs clear: processor_pods, processor_health." in first
+
+
+def screened_investigation(tmp_path, screenings, errors=NOISY_ERRORS, diagnoses=(OUTAGE,), model_class=ScriptedModel):
+    model = model_class(["processor_errors", "processor_calls"], diagnoses=list(diagnoses), screenings=screenings)
+    tools = FakeTools([CIRCUIT_OPEN], get_dependency_status=CALLS, get_recent_errors=errors)
+    return model, asyncio.run(run.investigate("ProcessorCircuitOpen", tools, model, tmp_path, now=lambda: AT))
+
+
+def test_after_the_diagnosis_one_narrow_question_finds_planted_text_and_the_report_shows_it(tmp_path):
+    planted = cite("processor_errors", PLANTED)
+    model, trace = screened_investigation(tmp_path, [[planted, cite("processor_errors", "a line that is not there"),
+                                                      cite("processor_calls", "unanswered_percent 91.5")]])
+
+    found = trace.document["result"]["diagnosis"]
+    # only real outside text survives: not a made-up quote, not a count from another check
+    assert (found["root_cause"], found["set_aside"]) == ("processor_outage", [planted])
+    asked = model.screening[0][1][1]
+    assert asked.startswith("TEXTS\n[processor_errors] Simulated outage set to 240s\n[processor_errors] Authorization rejected: ")
+    assert "Answer with an empty list when none does, which is the usual case." in asked
+    assert "unanswered_percent" not in asked                                         # the calls are counts: not asked about
+    step = next(step for step in load(trace.path)["steps"] if step["step"] == "screen")
+    assert step["output"] == {"texts": 2, "found": [planted]} and len(step["model_calls"]) == 1
+    assert f'| `processor_errors` | "{PLANTED}" |' in trace.report_path.read_text(encoding="utf-8")
+
+
+def test_what_the_screening_finds_joins_what_the_diagnosis_set_aside_each_once(tmp_path):
+    planted = cite("processor_errors", PLANTED)
+    _, trace = screened_investigation(tmp_path, [[cite("processor_errors", PLANTED.upper())]],
+                                      diagnoses=[OUTAGE | {"set_aside": [planted]}])
+
+    assert trace.document["result"]["diagnosis"]["set_aside"] == [planted]
+
+
+def test_without_outside_text_nothing_is_asked_and_a_garbled_answer_does_not_stop_the_investigation(tmp_path):
+    quiet = ERRORS | {"groups": [], "warning_lines": 0}
+    model, trace = screened_investigation(tmp_path / "quiet", [], errors=quiet)
+    assert model.screening == [] and trace.document["status"] == "completed"
+    assert next(step for step in load(trace.path)["steps"] if step["step"] == "screen")["output"] == {"texts": 0, "found": []}
+
+    class Garbled(ScriptedModel):
+        async def ask(self, messages, shape, max_tokens, thinking=False):
+            if shape.__name__ == "Screening":
+                raise ModelError("The model's answer did not fit the shape asked for: cut off")
+            return await super().ask(messages, shape, max_tokens, thinking)
+
+    _, garbled = screened_investigation(tmp_path / "garbled", [], model_class=Garbled)
+    assert (garbled.document["status"], garbled.document["result"]["diagnosis"]["root_cause"]) == ("completed", "processor_outage")
+    screen = next(step for step in load(garbled.path)["steps"] if step["step"] == "screen")
+    assert screen["output"]["error"].startswith("The model's answer did not fit")
+
+
+def test_the_screening_answer_can_only_quote_checks_that_returned_outside_text():
+    shape = prompts.screening_shape(["processor_errors", "sagas"])
+
+    assert list(shape.model_fields) == ["addressed_to_a_reader"]
+    assert shape(addressed_to_a_reader=[cite("sagas", "x")]).addressed_to_a_reader[0].check == "sagas"
+    for wrong in ([cite("processor_calls", "x")], [cite("sagas", "x")] * 4, [cite("sagas", "x" * 201)]):
+        with pytest.raises(ValidationError):
+            shape(addressed_to_a_reader=wrong)
+    assert diagnosis.outside_texts({"processor_errors": {"tool": "get_recent_errors", "is_error": False, "result": NOISY_ERRORS},
+                                    "processor_calls": {"tool": "get_dependency_status", "is_error": False, "result": CALLS}}) == [
+        ("processor_errors", "Simulated outage set to 240s"), ("processor_errors", f"Authorization rejected: {PLANTED}")]

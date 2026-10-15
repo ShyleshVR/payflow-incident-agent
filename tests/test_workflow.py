@@ -38,7 +38,7 @@ def test_a_firing_alert_is_taken_in_and_reported_and_every_step_is_in_the_trace_
     assert document["alerts"] == [CIRCUIT_OPEN]
     # the scripted model asked for nothing: no rounds, but every step is there
     assert [step["step"] for step in document["steps"]] == ["intake", "load_runbook", "choose_checks", "record_unchosen", "diagnose",
-                                                            "report"]
+                                                            "screen", "report"]
     intake = document["steps"][0]
     assert intake["output"] == {"firing_with_this_name": 1, "all_firing": ["PayoutsFailing", "ProcessorCircuitOpen"]}
     assert [(call["tool"], call["arguments"], call["is_error"]) for call in intake["tool_calls"]] == [("list_active_alerts", {}, False)]

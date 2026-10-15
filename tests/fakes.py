@@ -21,12 +21,16 @@ class ScriptedModel:
     "enough" (no checks) once they are used up.
     Diagnosing: each call takes the next entry of `diagnoses` (a dict with root_cause, confidence,
     evidence and summary); with none left it answers "unknown" without citing anything.
+    Screening outside text: each call takes the next entry of `screenings` (a list of
+    {"check", "quote"}); with none left it finds nothing.
     It remembers what it was shown.
     """
 
-    def __init__(self, *rounds, diagnoses=(), reasoning="scripted"):
+    def __init__(self, *rounds, diagnoses=(), reasoning="scripted", screenings=()):
         self._rounds = list(rounds)
         self._diagnoses = list(diagnoses)
+        self._screenings = list(screenings)
+        self.screening = []   # messages of every call that screened outside text
         self._reasoning = reasoning
         self.asked = []       # (messages, shape) of every call that chose checks
         self.diagnosing = []  # (messages, shape, thinking) of every call that diagnosed
@@ -37,6 +41,10 @@ class ScriptedModel:
             answer = {"reasoning": self._reasoning, "root_cause": "unknown", "confidence": "low", "evidence": [],
                       "summary": "Nothing was diagnosed."} | (self._diagnoses.pop(0) if self._diagnoses else {})
             return Reply(Answer(answer), input_tokens=1800, output_tokens=200)
+        if shape.__name__ == "Screening":
+            self.screening.append(messages)
+            found = self._screenings.pop(0) if self._screenings else []
+            return Reply(Answer(addressed_to_a_reader=list(found)), input_tokens=500, output_tokens=20)
         self.asked.append((messages, shape))
         picks = self._rounds.pop(0) if self._rounds else []
         return Reply(Answer(reasoning=self._reasoning, next_checks=list(picks)), input_tokens=900, output_tokens=40)
