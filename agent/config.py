@@ -22,5 +22,12 @@ LLM_CACHE_PROMPT = os.environ.get("LLM_CACHE_PROMPT", "off").lower() == "on"
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:8091/mcp")
 # One Markdown file per alert the agent knows how to investigate.
 RUNBOOKS_DIR = Path(os.environ.get("RUNBOOKS_DIR", Path(__file__).resolve().parent.parent / "runbooks"))
+# The agent as a service (payflow-agent serve): where it listens, and what it keeps (git-ignored).
+# 127.0.0.1 is this machine only; PayFlow's Alertmanager, in the cluster, needs 0.0.0.0.
+AGENT_HOST = os.environ.get("AGENT_HOST", "127.0.0.1")
+AGENT_PORT = int(os.environ.get("AGENT_PORT", "8092"))
+AGENT_DB = Path(os.environ.get("AGENT_DB", Path(__file__).resolve().parent.parent / "runs" / "agent.sqlite"))
+# When set, every request to the service must carry "Authorization: Bearer <this>".
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN") or None
 # One JSON trace per investigation (git-ignored).
 RUNS_DIR = Path(os.environ.get("RUNS_DIR", Path(__file__).resolve().parent.parent / "runs"))

@@ -17,6 +17,9 @@ dependencies = [
     "mcp>=2",
     # get_pod_status reads pods and events
     "kubernetes",
+    # the agent as a service: Alertmanager's webhook and the investigations (payflow-agent serve)
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]

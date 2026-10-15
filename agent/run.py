@@ -71,5 +71,15 @@ async def investigate_replay(recorded_path: Path, runs_dir: Path) -> Trace:
                              replay_of=recorded["id"])
 
 
+def refused_connection(error: BaseException) -> bool:
+    """Whether a failure is a server that refused the connection (the MCP server not running).
+    The MCP client reports it wrapped in exception groups, and as the ConnectError of whichever
+    HTTP library it is built on (httpx2 today), hence by name."""
+    if type(error).__name__ == "ConnectError":
+        return True
+    nested = list(getattr(error, "exceptions", ())) + [error.__cause__, error.__context__]
+    return any(refused_connection(inner) for inner in nested if inner is not None)
+
+
 def local_model() -> LocalModel:
     return LocalModel(config.LLM_URL, config.LLM_MODEL, cache_prompt=config.LLM_CACHE_PROMPT)

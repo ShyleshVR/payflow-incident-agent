@@ -46,11 +46,16 @@ def main(argv: list[str] | None = None) -> int:
                           help="the held-out scenarios (evals/scenarios/held-out), never used for tuning, instead of the others")
     evaluate.add_argument("--fresh", action="store_true",
                           help="the fresh scenarios (evals/scenarios/fresh), made to compare models, instead of the others")
+    serve = commands.add_parser("serve", help="run as a service: take Alertmanager's alerts and investigate them")
+    serve.add_argument("--host", default=config.AGENT_HOST, help=f"where to listen (default {config.AGENT_HOST})")
+    serve.add_argument("--port", type=int, default=config.AGENT_PORT, help=f"(default {config.AGENT_PORT})")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "eval":
         which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else None
         return _eval(arguments.label if arguments.label != "eval" or not which else which, arguments.scenario, which)
+    if arguments.command == "serve":
+        return _serve(arguments.host, arguments.port)
     if arguments.command == "list":
         return _list(arguments.n)
     if arguments.command == "show":
@@ -140,13 +145,17 @@ def _find(which: str) -> Path | None:
     return by_id if by_id.is_file() else None
 
 
-def _refused_connection(error: BaseException) -> bool:
-    """The MCP client reports a refused connection wrapped in exception groups, and as the
-    ConnectError of whichever HTTP library it is built on (httpx2 today), hence by name."""
-    if type(error).__name__ == "ConnectError":
-        return True
-    nested = list(getattr(error, "exceptions", ())) + [error.__cause__, error.__context__]
-    return any(_refused_connection(inner) for inner in nested if inner is not None)
+_refused_connection = runs.refused_connection
+
+
+def _serve(host: str, port: int) -> int:
+    import uvicorn
+
+    from api.app import default_app
+
+    print(f"listening on http://{host}:{port}  (alerts: POST /alerts; investigations: GET /investigations)")
+    uvicorn.run(default_app(), host=host, port=port, log_level="info")
+    return DONE
 
 
 if __name__ == "__main__":
