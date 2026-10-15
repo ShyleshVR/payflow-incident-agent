@@ -129,7 +129,10 @@ sending to its in-cluster alert-sink. Without the token, PayFlow is unchanged.
 
 PayFlow's payment-service logs every processor call that gets no answer it can trust, and every
 change of its circuit breaker. That was added for the agent: without it, "payment-service cannot
-reach the processor" left no trace that could show it.
+reach the processor" left no trace that could show it. The line says why, in words, before the
+exceptions it came from: "the processor's host name could not be resolved", "the connection was
+refused", "no connection within the connect timeout", "no answer within the timeout". (Java reports
+the first two alike, as "ConnectException: null"; the difference is in the deepest cause.)
 
 ## What is kept where
 

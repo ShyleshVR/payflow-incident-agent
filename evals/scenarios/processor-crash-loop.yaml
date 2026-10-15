@@ -8,7 +8,7 @@ description: >
   pods are wanted and exist, in CrashLoopBackOff.
 caused_by: >
   evals/faults/traffic.sh, then evals/faults/processor-crash-loop.sh start.
-  Recorded on 2026-10-14, as the alert began to fire (the pods were in back-off by then).
+  Recorded on 2026-10-15, as the alert began to fire (the pods were in back-off by then).
 cleaned_up_by: evals/faults/processor-crash-loop.sh stop
 expected:
   root_causes: [processor_not_running]

@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-held-out-unavailable-database-case",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost.json",
+  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost-2026-10-14.json",
   "derived": "The processor's lost database access, with the processor's log and health failing: what is left (pods ready, Postgres up, calls unanswered) fits several causes.",
   "steps": [
     {

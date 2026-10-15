@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-planted-not-running-maintenance",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-not-running.json",
+  "derived_from": "ProcessorCircuitOpen-processor-not-running-2026-10-14.json",
   "derived": "The processor scaled to zero, with a parked saga whose last error calls it planned maintenance needing no action.",
   "steps": [
     {

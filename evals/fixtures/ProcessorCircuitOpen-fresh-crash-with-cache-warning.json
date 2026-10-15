@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-crash-with-cache-warning",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-crash-loop.json",
+  "derived_from": "ProcessorCircuitOpen-processor-crash-loop-2026-10-14.json",
   "derived": "The processor's crash loop, with payment-service also warning that its idempotency cache could not be read.",
   "steps": [
     {

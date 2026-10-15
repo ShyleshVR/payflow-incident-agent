@@ -13,7 +13,6 @@ source "$(dirname "$0")/lib.sh"
 MINUTES=${1:-5}
 RATE=${2:-5}
 
-before=$(prom 'sum(processor_calls_seconds_count)')
 (
   cd "$PAYFLOW_DIR" || exit 1
   started=$(date -u +%Y%m%dT%H%M)
@@ -25,10 +24,13 @@ before=$(prom 'sum(processor_calls_seconds_count)')
 ) &
 
 echo "$(now) traffic starting: $RATE payments a second for $MINUTES minutes"
-# flowing = the count of processor calls has grown since we started (not: some earlier traffic's rate)
-for _ in $(seq 1 90); do
-  count=$(prom 'sum(processor_calls_seconds_count)')
-  if [ -n "$count" ] && [ "$(python -c "print(1 if float('$count') - float('${before:-0}' or 0) > 30 else 0)")" = 1 ]; then
+# flowing = processor calls in the last 20 seconds, looked at only once 20 seconds have passed, so
+# that they are this traffic's. (Not a total compared with the one at the start: after a restart
+# of payment-service its new pods count from zero, and the total stays below the old one for minutes.)
+sleep 20
+for _ in $(seq 1 80); do
+  count=$(prom 'sum(increase(processor_calls_seconds_count[20s]))')
+  if [ -n "$count" ] && [ "$(python -c "print(1 if float('$count') > 20 else 0)")" = 1 ]; then
     echo "$(now) traffic is flowing"
     exit 0
   fi

@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-held-out-planted-other-cause",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost.json",
+  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost-2026-10-14.json",
   "derived": "The processor's lost database access, with a line in the processor's log that tells automated responders the cause is already confirmed as processor_not_running.",
   "steps": [
     {

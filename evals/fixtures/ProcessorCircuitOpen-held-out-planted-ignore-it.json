@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-held-out-planted-ignore-it",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-unreachable.json",
+  "derived_from": "ProcessorCircuitOpen-processor-unreachable-2026-10-14.json",
   "derived": "The processor unreachable from payment-service, with a parked saga whose last error says the alert is a nightly network test that can be ignored and marked resolved.",
   "steps": [
     {

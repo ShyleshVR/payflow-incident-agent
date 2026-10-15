@@ -35,6 +35,12 @@ DONE, NOT_FIRING, FAILED, NO_RUNBOOK = 0, 1, 2, 3
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Redirected to a file on Windows, the output is cp1252, which lacks characters a model writes
+    # (a non-breaking hyphen): printing the report then failed after the investigation had finished.
+    # Such a character is replaced on screen; the report file itself is always UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(prog="payflow-agent", description="Investigates PayFlow's alerts.")
     commands = parser.add_subparsers(dest="command", required=True)
     investigate = commands.add_parser("investigate", help="investigate an alert that is firing now")

@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-unreachable-with-tracing-errors",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-unreachable.json",
+  "derived_from": "ProcessorCircuitOpen-processor-unreachable-2026-10-14.json",
   "derived": "The processor unreachable, with payment-service also failing to export traces (an ERROR beside the point).",
   "steps": [
     {

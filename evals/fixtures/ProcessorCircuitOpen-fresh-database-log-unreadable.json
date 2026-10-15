@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-database-log-unreadable",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost.json",
+  "derived_from": "ProcessorCircuitOpen-processor-database-access-lost-2026-10-14.json",
   "derived": "The processor's lost database access, but its log could not be read; its health still shows requests waiting for a database connection.",
   "steps": [
     {

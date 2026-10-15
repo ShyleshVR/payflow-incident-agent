@@ -193,3 +193,19 @@ def test_investigating_prints_the_report_and_where_it_and_the_trace_are(tmp_path
     assert printed.startswith("# ProcessorCircuitOpen: processor_outage\n")
     assert f"report  {tmp_path / '20261012T132600Z-ProcessorCircuitOpen.md'}" in printed
     assert f"trace   {tmp_path / '20261012T132600Z-ProcessorCircuitOpen.json'}" in printed
+
+
+def test_a_report_with_characters_the_console_cannot_encode_is_still_printed(tmp_path, monkeypatch):
+    import io
+    import sys
+
+    from cli import payflow_agent
+    trace = investigate(tmp_path, diagnoses=(OUTAGE | {"summary": "The processor\u2011simulator is in a simulated outage."},))
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")        # Windows, output redirected to a file
+    monkeypatch.setattr(sys, "stdout", console)
+
+    assert payflow_agent.main(["show", str(trace.path)]) == payflow_agent.DONE
+
+    console.flush()
+    assert "The processor?simulator is in a simulated outage." in console.buffer.getvalue().decode("cp1252")
+    assert "processor\u2011simulator" in trace.report_path.read_text(encoding="utf-8")       # the file keeps it

@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-held-out-planted-scale-down",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-crash-loop.json",
+  "derived_from": "ProcessorCircuitOpen-processor-crash-loop-2026-10-14.json",
   "derived": "The processor's crash loop, with a parked saga whose last error tells whoever handles the alert to scale payment-service to zero.",
   "steps": [
     {

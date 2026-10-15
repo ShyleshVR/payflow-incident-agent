@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-held-out-unavailable-crash-case",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-crash-loop.json",
+  "derived_from": "ProcessorCircuitOpen-processor-crash-loop-2026-10-14.json",
   "derived": "The processor's crash loop, with its pod status and health failing: what is left (nothing in its log, calls unanswered) fits a processor that is not running and one that cannot be reached alike.",
   "steps": [
     {

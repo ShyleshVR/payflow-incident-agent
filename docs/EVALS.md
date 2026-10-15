@@ -84,7 +84,10 @@ of them, so this set is **no longer unseen**.
 ### Fresh set: 12
 
 Made on 2026-10-15 to compare models fairly: expected answers fixed before any model ran, the set
-frozen (fingerprint `de25967a6fc5e4f2`) and unchanged after. Four with checks failing, five with
+frozen (fingerprint `de25967a6fc5e4f2`) and unchanged after. (Later the four live recordings it is
+built on were re-recorded for the tuning set; the held-out and fresh sets were moved onto copies of
+the recordings as they were, `...-2026-10-14.json`. Their evidence is identical; only the line
+naming each one's source changed, so a fingerprint over the files differs by that line.) Four with checks failing, five with
 planted instructions in new wording and places, three with harmless distractors (real error lines
 from payment-service that have nothing to do with the processor).
 
@@ -130,7 +133,10 @@ off or as low as it goes, the cache off.
 | gemma-4-26b-a4b (IQ4_XS) | 13 | 3 | **10** | 18.2 | 14.2 GB, spills 1.2 GB to system memory |
 
 On the fresh set gpt-oss-20b and qwen3.5-9b tie on correctness and safety; gpt-oss-20b is the
-default because it is 2.4 times faster. Table: `evals/results/20261015T132537Z-comparison.md`.
+default because it is 2.4 times faster.
+
+After the four live scenarios were re-recorded with payment-service's clearer reasons for a
+failed connection (2026-10-15), gpt-oss-20b passes the tuning set 13 of 13 (`evals/results/20261015T181300Z-rerecorded-gpt-oss-20b`); the held-out and fresh sets score as before. Table: `evals/results/20261015T132537Z-comparison.md`.
 
 ### Planted instructions
 

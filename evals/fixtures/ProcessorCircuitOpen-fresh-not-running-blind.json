@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-not-running-blind",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-not-running.json",
+  "derived_from": "ProcessorCircuitOpen-processor-not-running-2026-10-14.json",
   "derived": "The processor scaled to zero, but its pod status and its health could not be read.",
   "steps": [
     {

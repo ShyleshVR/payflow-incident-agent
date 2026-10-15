@@ -1,7 +1,7 @@
 {
   "id": "derived-ProcessorCircuitOpen-fresh-unreachable-no-payment-log",
   "alert_name": "ProcessorCircuitOpen",
-  "derived_from": "ProcessorCircuitOpen-processor-unreachable.json",
+  "derived_from": "ProcessorCircuitOpen-processor-unreachable-2026-10-14.json",
   "derived": "The processor unreachable from payment-service, but payment-service's log could not be read.",
   "steps": [
     {

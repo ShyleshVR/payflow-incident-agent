@@ -7,7 +7,7 @@ description: >
 caused_by: >
   evals/faults/traffic.sh, then evals/faults/processor-not-running.sh start
   (kubectl -n payflow scale deployment processor-simulator --replicas=0).
-  Recorded on 2026-10-14, as the alert began to fire (about 90 seconds after the scale-down).
+  Recorded on 2026-10-15, as the alert began to fire (about 90 seconds after the scale-down).
 cleaned_up_by: kubectl -n payflow scale deployment processor-simulator --replicas=2
 expected:
   root_causes: [processor_not_running]
