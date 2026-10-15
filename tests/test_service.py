@@ -61,7 +61,7 @@ def test_each_new_firing_starts_one_investigation_and_the_rest_of_the_notificati
     other = service.receive(notification(alert("f9", name="KafkaConsumerLag")))
     resolved = service.receive(notification(alert("f1", status="resolved")))
 
-    assert first == {"investigations": [1], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": []}
+    assert first == {"investigations": [1], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": [], "lapsing": []}
     assert (again["repeats"], again["investigations"]) == (1, [])
     assert second_instance["joined"] == [1]                                            # one incident, one investigation
     assert other["no_runbook"] == [2] and service.store.investigation(2)["status"] == states.NO_RUNBOOK
@@ -70,7 +70,7 @@ def test_each_new_firing_starts_one_investigation_and_the_rest_of_the_notificati
     assert [(f["fingerprint"], f["resolved_at"]) for f in firings] == [("f1", "2026-10-15T10:20:00Z"), ("f2", None)]
     assert firings[1]["labels"]["application"] == "payout-service"
     assert service.receive(notification({"status": "firing", "labels": {}})) == {
-        "investigations": [], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": []}   # nothing to go on: skipped
+        "investigations": [], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": [], "lapsing": []}   # nothing to go on: skipped
 
 
 def test_investigations_run_one_at_a_time_oldest_first_and_record_how_they_ended():

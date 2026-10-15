@@ -36,7 +36,7 @@ def test_the_model_chooses_round_by_round_and_code_runs_what_it_chose(tmp_path):
     trace, tools = investigate(model, tmp_path)
 
     assert steps(trace) == ["intake", "load_runbook", "choose_checks", "gather", "choose_checks", "gather", "choose_checks",
-                            "record_unchosen", "diagnose", "screen", "report"]
+                            "record_unchosen", "diagnose", "screen", "propose", "report"]
     result = trace.document["result"]
     assert (result["checks_run"], result["rounds"], result["stopped_because"]) == (
         ["processor_calls", "processor_pods", "processor_errors"], 2, "the model had seen enough")

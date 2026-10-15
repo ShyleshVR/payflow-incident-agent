@@ -10,10 +10,15 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-# The states of an investigation. queued -> running -> completed | not_firing | failed;
+# The states of an investigation. queued -> running -> completed | awaiting_decision |
+# not_firing | failed; awaiting_decision -> completed once a person decides (or it lapses);
 # no_runbook: recorded, never run (the agent has no runbook for the alert).
 QUEUED, RUNNING, COMPLETED, NOT_FIRING, FAILED, NO_RUNBOOK = "queued", "running", "completed", "not_firing", "failed", "no_runbook"
-OPEN = (QUEUED, RUNNING)
+AWAITING_DECISION = "awaiting_decision"
+# An investigation still open to new firings of its alert: one incident, one investigation.
+OPEN = (QUEUED, RUNNING, AWAITING_DECISION)
+# What a decision can be: by a person, or lapsed (every firing behind it resolved first).
+APPROVED, REJECTED, LAPSED = "approved", "rejected", "lapsed"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS investigations (
@@ -25,7 +30,12 @@ CREATE TABLE IF NOT EXISTS investigations (
     finished_at TEXT,
     trace_id TEXT,
     root_cause TEXT,
-    error TEXT
+    error TEXT,
+    proposal TEXT,
+    decision TEXT,
+    decided_by TEXT,
+    decided_at TEXT,
+    decision_note TEXT
 );
 CREATE TABLE IF NOT EXISTS firings (
     fingerprint TEXT NOT NULL,
@@ -52,6 +62,12 @@ class Store:
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
+        # a file made before decisions existed gets their columns
+        present = {row["name"] for row in self._db.execute("PRAGMA table_info(investigations)")}
+        with self._db:
+            for column in ("proposal", "decision", "decided_by", "decided_at", "decision_note"):
+                if column not in present:
+                    self._db.execute(f"ALTER TABLE investigations ADD COLUMN {column} TEXT")
         self._now = now
 
     # ---- firings
@@ -93,13 +109,16 @@ class Store:
         row = self._db.execute("SELECT * FROM investigations WHERE id = ?", (investigation_id,)).fetchone()
         return dict(row) if row else None
 
-    def investigations(self, limit: int = 50) -> list[dict]:
-        rows = self._db.execute("SELECT * FROM investigations ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    def investigations(self, limit: int = 50, status: str | None = None) -> list[dict]:
+        if status is None:
+            rows = self._db.execute("SELECT * FROM investigations ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        else:
+            rows = self._db.execute("SELECT * FROM investigations WHERE status = ? ORDER BY id DESC LIMIT ?", (status, limit)).fetchall()
         return [dict(row) for row in rows]
 
     def open_for(self, alert_name: str) -> dict | None:
-        """The investigation of this alert that is queued or running, if any."""
-        row = self._db.execute("SELECT * FROM investigations WHERE alert_name = ? AND status IN (?, ?) ORDER BY id LIMIT 1",
+        """The investigation of this alert that is queued, running or waiting for a decision, if any."""
+        row = self._db.execute("SELECT * FROM investigations WHERE alert_name = ? AND status IN (?, ?, ?) ORDER BY id LIMIT 1",
                                (alert_name, *OPEN)).fetchone()
         return dict(row) if row else None
 

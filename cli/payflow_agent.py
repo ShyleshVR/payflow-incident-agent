@@ -5,6 +5,9 @@
     payflow-agent list                                   # recent investigations
     payflow-agent show latest                            # the report of one (latest, an id, or a file)
     payflow-agent eval --label baseline                  # replay every recorded scenario and score it
+    payflow-agent serve                                  # the service: Alertmanager's alerts, proposals
+    payflow-agent pending                                # proposals waiting for your decision
+    payflow-agent approve 3 --note "..."                 # decide on one (reject needs --reason)
 
 A live investigation needs the model server (scripts\\start-llm.ps1), the MCP server
 (python -m mcp_server.server) and the PayFlow cluster. A replay or an eval needs only the model server.
@@ -12,8 +15,11 @@ Listing and showing need nothing: reports are made from the trace files in runs\
 """
 import argparse
 import asyncio
+import getpass
 import sys
 from pathlib import Path
+
+import httpx
 
 from agent import config, report
 from agent import run as runs
@@ -46,6 +52,13 @@ def main(argv: list[str] | None = None) -> int:
                           help="the held-out scenarios (evals/scenarios/held-out), never used for tuning, instead of the others")
     evaluate.add_argument("--fresh", action="store_true",
                           help="the fresh scenarios (evals/scenarios/fresh), made to compare models, instead of the others")
+    commands.add_parser("pending", help="investigations whose proposal waits for your decision (asks the service)")
+    approve = commands.add_parser("approve", help="approve the proposal of an investigation (asks the service)")
+    approve.add_argument("id", type=int, help="the service's investigation id (see: payflow-agent pending)")
+    approve.add_argument("--note", default="", help="why, or anything to record with the decision")
+    reject = commands.add_parser("reject", help="reject the proposal of an investigation (asks the service)")
+    reject.add_argument("id", type=int)
+    reject.add_argument("--reason", required=True, help="why it is rejected (required)")
     serve = commands.add_parser("serve", help="run as a service: take Alertmanager's alerts and investigate them")
     serve.add_argument("--host", default=config.AGENT_HOST, help=f"where to listen (default {config.AGENT_HOST})")
     serve.add_argument("--port", type=int, default=config.AGENT_PORT, help=f"(default {config.AGENT_PORT})")
@@ -56,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
         return _eval(arguments.label if arguments.label != "eval" or not which else which, arguments.scenario, which)
     if arguments.command == "serve":
         return _serve(arguments.host, arguments.port)
+    if arguments.command == "pending":
+        return _pending()
+    if arguments.command in ("approve", "reject"):
+        return _decide(arguments.id, arguments.command, arguments.note if arguments.command == "approve" else arguments.reason)
     if arguments.command == "list":
         return _list(arguments.n)
     if arguments.command == "show":
@@ -146,6 +163,54 @@ def _find(which: str) -> Path | None:
 
 
 _refused_connection = runs.refused_connection
+
+
+def _agent_client() -> httpx.Client:
+    """The running service (payflow-agent serve), with its token. Replaced in tests."""
+    host = "127.0.0.1" if config.AGENT_HOST in ("0.0.0.0", "") else config.AGENT_HOST
+    headers = {"Authorization": f"Bearer {config.AGENT_TOKEN}"} if config.AGENT_TOKEN else {}
+    return httpx.Client(base_url=f"http://{host}:{config.AGENT_PORT}", headers=headers, timeout=30)
+
+
+def _ask_service(method: str, path: str, **kwargs) -> httpx.Response | None:
+    try:
+        with _agent_client() as client:
+            return client.request(method, path, **kwargs)
+    except httpx.ConnectError:
+        print(f"The agent service does not answer on port {config.AGENT_PORT}. Start it with: payflow-agent serve")
+        return None
+
+
+def _pending() -> int:
+    answer = _ask_service("GET", "/investigations", params={"status": "awaiting_decision", "limit": 100})
+    if answer is None or answer.status_code != 200:
+        if answer is not None:
+            print(f"The service refused: {answer.status_code} {answer.text}")
+        return FAILED
+    waiting = answer.json()
+    if not waiting:
+        print("Nothing waits for a decision.")
+    for item in reversed(waiting):
+        print(f"{item['id']:>4}  {item['alert_name']}: {item['root_cause']}  (since {item['finished_at']})")
+        print(f"      proposed: {item['proposal']}")
+        print(f"      report:   runs/{item['trace_id']}.md")
+    return DONE
+
+
+def _decide(investigation_id: int, command: str, note: str) -> int:
+    body = {"decision": command, "by": getpass.getuser(), "note": note}
+    answer = _ask_service("POST", f"/investigations/{investigation_id}/decision", json=body)
+    if answer is None:
+        return FAILED
+    if answer.status_code != 200:
+        print(f"Not {'approved' if command == 'approve' else 'rejected'}: {answer.json().get('detail', answer.text)}")
+        return FAILED
+    decided = answer.json()
+    print(f"Investigation {investigation_id} ({decided['alert_name']}: {decided['root_cause']}): {decided['decision']} by "
+          f"{decided['decided_by']} at {decided['decided_at']}.")
+    if decided["decision"] == "approved":
+        print("Nothing is carried out: the agent does not act yet. The step is yours to take.")
+    return DONE
 
 
 def _serve(host: str, port: int) -> int:

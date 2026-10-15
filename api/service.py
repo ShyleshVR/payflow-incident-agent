@@ -8,6 +8,10 @@ firing. An alert with no runbook is recorded as such and not investigated.
 Investigations run one at a time, oldest first: there is one model, on one graphics card. When
 the model server or the MCP server cannot be reached, the investigation goes back in the queue
 and is tried again a little later; any other failure ends it as failed, with the error kept.
+
+An investigation that reaches a proposal waits for a person's decision (decide): approved or
+rejected, which resumes its paused workflow. When every firing behind it has resolved before
+anyone decided, it lapses: the workflow is resumed with that instead.
 """
 import asyncio
 import logging
@@ -28,16 +32,20 @@ RETRY_AFTER_SECONDS = 30.0
 
 class Service:
     def __init__(self, store: Store, investigate: Callable[[str], Awaitable[Trace]], has_runbook: Callable[[str], bool],
-                 retry_after: float = RETRY_AFTER_SECONDS):
+                 retry_after: float = RETRY_AFTER_SECONDS, resume: Callable[[str, dict], Awaitable[Trace]] | None = None):
+        """investigate(alert name) runs an investigation; resume(trace id, decision) finishes one
+        that waits for a decision."""
         self.store = store
         self._investigate = investigate
+        self._resume = resume
         self._has_runbook = has_runbook
         self._retry_after = retry_after
         self._wake: asyncio.Event | None = None
+        self._deciding = asyncio.Lock()
 
     def receive(self, notification: dict) -> dict:
         """One Alertmanager webhook notification. Returns what it did, for the reply."""
-        done = {"investigations": [], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": []}
+        done = {"investigations": [], "joined": [], "repeats": 0, "resolved": 0, "no_runbook": [], "lapsing": []}
         for alert in notification.get("alerts", []):
             labels = alert.get("labels", {})
             name, fingerprint, starts_at = labels.get("alertname"), alert.get("fingerprint"), alert.get("startsAt")
@@ -45,6 +53,11 @@ class Service:
                 continue
             if alert.get("status") == "resolved":
                 done["resolved"] += self.store.resolve(fingerprint, starts_at, alert.get("endsAt") or starts_at)
+                firing = self.store.firing(fingerprint, starts_at)
+                waiting = firing and self.store.investigation(firing["investigation_id"])
+                if (waiting and waiting["status"] == states.AWAITING_DECISION and waiting["id"] not in done["lapsing"]
+                        and all(item["resolved_at"] for item in self.store.firings_of(waiting["id"]))):
+                    done["lapsing"].append(waiting["id"])
                 continue
             if self.store.firing(fingerprint, starts_at):
                 done["repeats"] += 1
@@ -62,6 +75,37 @@ class Service:
         if done["investigations"] and self._wake is not None:
             self._wake.set()
         return done
+
+    async def handle(self, notification: dict) -> dict:
+        """receive(), and then the lapse of every proposal whose alarms have all resolved."""
+        done = self.receive(notification)
+        for investigation_id in done["lapsing"]:
+            try:
+                await self.decide(investigation_id, states.LAPSED, by="incident agent",
+                                  note="every alarm behind it resolved before anyone decided")
+            except DecisionRefused:
+                pass            # decided meanwhile
+        return done
+
+    async def decide(self, investigation_id: int, decision: str, by: str, note: str = "") -> dict:
+        """A decision on a waiting investigation's proposal: approved, rejected (with a reason) or
+        lapsed. Resumes its workflow, which records the decision in the trace and the report.
+        Approving carries nothing out yet."""
+        if decision not in (states.APPROVED, states.REJECTED, states.LAPSED):
+            raise DecisionRefused(f"a decision is approved or rejected, not {decision!r}")
+        if decision == states.REJECTED and not note.strip():
+            raise DecisionRefused("a rejection needs a reason")
+        async with self._deciding:    # one decision at a time: a second one finds the first done
+            found = self.store.investigation(investigation_id)
+            if found is None:
+                raise UnknownInvestigation(investigation_id)
+            if found["status"] != states.AWAITING_DECISION:
+                raise DecisionRefused(f"investigation {investigation_id} is {found['status']}, not waiting for a decision")
+            at = states.utc_now()
+            await self._resume(found["trace_id"], {"decision": decision, "by": by, "at": at, "note": note.strip()})
+            self.store.update(investigation_id, status=states.COMPLETED, decision=decision, decided_by=by, decided_at=at,
+                              decision_note=note.strip() or None)
+            return self.store.investigation(investigation_id)
 
     async def process_one(self) -> int | None:
         """Runs the oldest queued investigation to its end. None when nothing is queued."""
@@ -85,8 +129,11 @@ class Service:
                               error=f"{type(e).__name__}: {e}")
         else:
             document = trace.document
-            self.store.update(investigation_id, status=states.COMPLETED, finished_at=states.utc_now(), trace_id=document["id"],
-                              root_cause=document["result"]["diagnosis"]["root_cause"])
+            waiting = document.get("status") == states.AWAITING_DECISION
+            proposal = (document["result"].get("proposal") or {}).get("step")
+            self.store.update(investigation_id, status=states.AWAITING_DECISION if waiting else states.COMPLETED,
+                              finished_at=states.utc_now(), trace_id=document["id"],
+                              root_cause=document["result"]["diagnosis"]["root_cause"], proposal=proposal)
         return investigation_id
 
     async def run(self) -> None:
@@ -112,6 +159,14 @@ class Service:
 
 class _Unreachable(Exception):
     """The model server or the MCP server did not answer."""
+
+
+class DecisionRefused(Exception):
+    """A decision that cannot be taken: the investigation is not waiting for one, or the decision is incomplete."""
+
+
+class UnknownInvestigation(Exception):
+    pass
 
 
 def runbook_exists(directory) -> Callable[[str], bool]:

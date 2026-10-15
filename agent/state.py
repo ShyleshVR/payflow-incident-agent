@@ -34,3 +34,7 @@ class Investigation(TypedDict, total=False):
     # evidence that addressed the agent or the operator: not a fact, never acted on, shown in the report.
     diagnosis: dict
     result: dict              # what the report step concluded
+    # The runbook's next step for the cause found ({"cause", "step"}), or None; and what a person
+    # decided about it ({"decision": approved | rejected | lapsed, "by", "at", "note"}), or None.
+    proposal: dict | None
+    decision: dict | None

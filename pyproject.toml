@@ -9,6 +9,8 @@ dependencies = [
     "langchain-openai",
     # the investigation workflow
     "langgraph>=1.2",
+    # a paused investigation's saved state, so that a decision can resume it after a restart
+    "langgraph-checkpoint-sqlite>=3",
     # runbook headers
     "pyyaml",
     "pydantic>=2",

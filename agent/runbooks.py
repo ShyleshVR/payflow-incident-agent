@@ -41,6 +41,8 @@ class Cause:
     shown_by: tuple[str, ...] = ()
     # checks that must have run and found nothing for this cause to stand (see diagnosis.unsupported)
     requires_clear: tuple[str, ...] = ()
+    # what the agent proposes when this is the cause: a person approves or rejects it. Empty: nothing proposed.
+    proposal: str = ""
 
 
 @dataclass(frozen=True)
@@ -122,8 +124,14 @@ def parse(text: str, file_name: str) -> Runbook:
             raise invalid(f"{field} names a cause the header does not have: "
                           f"{sorted(set(listed_per_cause) - {cause.name for cause in causes})}")
         rules[field] = listed_per_cause
+    proposals = header.get("proposals") or {}
+    if not isinstance(proposals, dict) or not all(isinstance(text, str) and text.strip() for text in proposals.values()):
+        raise invalid("proposals must give, for a cause, the next step proposed when it is found")
+    if set(proposals) - {cause.name for cause in causes}:
+        raise invalid(f"proposals names a cause the header does not have: {sorted(set(proposals) - {cause.name for cause in causes})}")
     causes = [Cause(cause.name, cause.description, tuple(str(name) for name in rules["shown_by"].get(cause.name, ())),
-                    tuple(str(name) for name in rules["requires_clear"].get(cause.name, ()))) for cause in causes]
+                    tuple(str(name) for name in rules["requires_clear"].get(cause.name, ())),
+                    " ".join(proposals.get(cause.name, "").split())) for cause in causes]
 
     listed = header.get("checks")
     if not isinstance(listed, dict) or not listed:

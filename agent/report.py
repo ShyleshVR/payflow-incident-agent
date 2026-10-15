@@ -10,9 +10,12 @@ UNKNOWN = "unknown"
 SAGA_LIST_TOOL = "list_sagas_needing_attention"
 
 
+AWAITING_DECISION = "awaiting_decision"
+
+
 def render(document: dict) -> str:
     """The trace document (agent.trace) as Markdown."""
-    if document["status"] != "completed":
+    if document["status"] not in ("completed", AWAITING_DECISION):
         return _unfinished(document)
     result = document["result"]
     diagnosis = result["diagnosis"]
@@ -95,12 +98,38 @@ def _checks(document: dict) -> str:
 
 
 def _what_to_do(document: dict) -> str:
-    text = ("This agent takes no action. From the runbook:\n\n"
+    text = _proposal(document)
+    text += ("This agent takes no action. From the runbook:\n\n"
             + "\n".join(f"> {line}".rstrip() for line in document["runbook"]["resolution"].splitlines()))
     waiting = [finding for name, finding in _saga_findings(document)]
     if waiting:
         text += "\n\nSagas waiting for an operator, according to the checks:\n\n" + "\n".join(f"- {line}" for line in waiting)
     return text
+
+
+def _proposal(document: dict) -> str:
+    """The runbook's next step for the cause found, and what became of it."""
+    proposal, decision = document["result"].get("proposal"), document["result"].get("decision")
+    if not proposal:
+        return ""
+    text = f"### Proposed next step\n\nFor `{proposal['cause']}`, from the runbook:\n\n> {proposal['step']}\n\n"
+    if decision is None and document["status"] == AWAITING_DECISION:
+        text += ("**Waiting for a decision.** Approve or reject it in the agent: `payflow-agent pending`, then "
+                 "`payflow-agent approve <id>` or `payflow-agent reject <id> --reason \"...\"`.")
+    elif decision is None:
+        text += "Not asked: this investigation was run outside the agent's service, where nothing waits for a decision."
+    elif decision["decision"] == "lapsed":
+        text += f"**Lapsed** at {_when(decision['at'])}: every alarm behind it resolved before anyone decided."
+    else:
+        text += f"**{decision['decision'].capitalize()}** by {decision['by']} at {_when(decision['at'])}"
+        text += f": \"{decision['note']}\"." if decision.get("note") else "."
+        if decision["decision"] == "approved":
+            text += " Nothing was carried out: the agent does not act yet; the step is for a person to take."
+    return text + "\n\n"
+
+
+def _when(stamp: str) -> str:
+    return stamp.replace("T", " ").replace("Z", " UTC")
 
 
 def _saga_findings(document: dict):
@@ -140,9 +169,10 @@ def _unfinished(document: dict) -> str:
 def one_line(document: dict) -> str:
     """For the list of past investigations."""
     outcome = document["status"]
-    if document["status"] == "completed":
+    if document["status"] in ("completed", AWAITING_DECISION):
         diagnosis = document["result"]["diagnosis"]
         outcome = "cause unknown" if diagnosis["root_cause"] == UNKNOWN else f"{diagnosis['root_cause']} ({diagnosis['confidence']})"
+        outcome += ", awaiting a decision" if document["status"] == AWAITING_DECISION else ""
     return f"{document['id']:<46} {outcome}" + ("  [replay]" if document["replay_of"] else "")
 
 

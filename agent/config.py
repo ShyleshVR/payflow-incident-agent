@@ -41,6 +41,9 @@ RUNBOOKS_DIR = Path(os.environ.get("RUNBOOKS_DIR", Path(__file__).resolve().pare
 AGENT_HOST = os.environ.get("AGENT_HOST", "127.0.0.1")
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8092"))
 AGENT_DB = Path(os.environ.get("AGENT_DB", Path(__file__).resolve().parent.parent / "runs" / "agent.sqlite"))
+# Where the service's paused workflows keep their state (LangGraph's checkpoints), so that a
+# decision can resume one after a restart.
+AGENT_CHECKPOINTS = Path(os.environ.get("AGENT_CHECKPOINTS", Path(__file__).resolve().parent.parent / "runs" / "checkpoints.sqlite"))
 # When set, every request to the service must carry "Authorization: Bearer <this>".
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN") or None
 # One JSON trace per investigation (git-ignored).

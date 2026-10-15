@@ -20,6 +20,21 @@ shown_by:
 # calls whatever the cause, so they mean "unreachable" only while the processor itself looks fine.
 requires_clear:
   processor_unreachable: [processor_pods, processor_health]
+# The next step the agent proposes for each cause; a person approves or rejects it. (Approving
+# records the decision; nothing is carried out by the agent yet.)
+proposals:
+  processor_outage: >
+    Contact the card processor about the outage on their side and follow its status. The breaker
+    closes by itself once trial calls succeed; then retry the sagas that parked during the outage.
+  processor_not_running: >
+    Bring the processor's pods back: scale the deployment up, or fix what makes them crash (their
+    last exit reason and events say what). Then retry the sagas that parked meanwhile.
+  processor_dependency_down: >
+    Restore what the processor depends on, usually its database login or connection pool (its log
+    names the failure). Then retry the sagas that parked meanwhile.
+  processor_unreachable: >
+    Restore payment-service's path to the processor: its configured address, the DNS name, or the
+    network between them. Then retry the sagas that parked meanwhile.
 checks:
   processor_calls:
     tool: get_dependency_status

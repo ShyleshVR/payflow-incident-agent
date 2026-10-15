@@ -42,6 +42,20 @@ class Trace:
         # not firing is not an investigation and leaves no file.
         self._confirmed = False
 
+    @classmethod
+    def reopen(cls, path: Path, now=utc_now) -> "Trace":
+        """A written trace, to add steps to: a paused investigation, resumed (perhaps by another process)."""
+        document = load(path)
+        trace = cls.__new__(cls)
+        trace._now = now
+        trace.id = document["id"]
+        trace.path = Path(path)
+        trace.report_path = Path(path).with_suffix(".md")
+        trace.document = document
+        trace._open_step = None
+        trace._confirmed = True
+        return trace
+
     @asynccontextmanager
     async def step(self, name: str):
         """Records one step of the workflow: when it ran, how long it took, and (through the

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
+from langgraph.types import interrupt
 
 from agent import diagnosis, prompts, runbooks
 from agent.llm import Model, ModelError
@@ -42,6 +43,9 @@ class Deps:
     trace: Trace
     runbooks_dir: Path
     diagnose_thinking: bool = False
+    # True in the service: the workflow pauses at a proposal until a person decides (it then needs
+    # a checkpointer). False on the command line and in evals: the proposal is reported, not asked.
+    ask_for_decision: bool = False
 
 
 class InvestigationError(Exception):
@@ -182,6 +186,31 @@ async def screen(state: Investigation, runtime: Runtime[Deps]) -> dict:
         return {"diagnosis": state["diagnosis"] | {"set_aside": set_aside}}
 
 
+async def propose(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """The runbook's next step for the cause found. None for unknown, or a cause without one."""
+    async with runtime.context.trace.step("propose") as step:
+        cause = state["diagnosis"]["root_cause"]
+        text = next((item.get("proposal", "") for item in state["runbook"]["causes"] if item["name"] == cause), "")
+        proposal = {"cause": cause, "step": text} if text else None
+        step["output"] = proposal
+        return {"proposal": proposal}
+
+
+async def decide(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """Waits for a person to approve or reject the proposal (only in the service, and only when
+    there is one). The workflow pauses here: its state is saved, and a decision (POST
+    /investigations/{id}/decision) resumes it, even in another process. Approving records the
+    decision; nothing is carried out yet."""
+    if not (state.get("proposal") and runtime.context.ask_for_decision):
+        return {}
+    # Outside the trace's step: the pause leaves the step, and the step is run again on resume.
+    answer = interrupt({"proposal": state["proposal"], "investigation": runtime.context.trace.id})
+    async with runtime.context.trace.step("decide") as step:
+        decision = {key: answer.get(key) for key in ("decision", "by", "at", "note")}
+        step["output"] = decision
+        return {"decision": decision, "result": state["result"] | {"decision": decision}}
+
+
 async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
     """What the investigation gathered and concluded."""
     async with runtime.context.trace.step("report") as step:
@@ -199,6 +228,8 @@ async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
             "findings": {name: _finding(item) for name, item in evidence.items()},
             "diagnosis": state["diagnosis"],
             "summary": state["diagnosis"]["summary"],
+            "proposal": state.get("proposal"),
+            "decision": None,
         }
         step["output"] = result
         return {"result": result, "status": "completed"}
@@ -223,9 +254,11 @@ def _finding(item: dict) -> list[str]:
     return list(item["result"].get("concerns", [])) if isinstance(item["result"], dict) else []
 
 
-def build_graph():
+def build_graph(checkpointer=None):
+    """checkpointer: where the state is saved after every step, so that a paused investigation can
+    be resumed (the service's); None where nothing pauses."""
     graph = StateGraph(Investigation, context_schema=Deps)
-    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, report):
+    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, propose, report, decide):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", lambda state: "load_runbook" if state["status"] == "investigating" else END,
@@ -237,6 +270,8 @@ def build_graph():
                                 ["record_unchosen", "choose_checks"])
     graph.add_edge("record_unchosen", "diagnose")
     graph.add_edge("diagnose", "screen")
-    graph.add_edge("screen", "report")
-    graph.add_edge("report", END)
-    return graph.compile()
+    graph.add_edge("screen", "propose")
+    graph.add_edge("propose", "report")
+    graph.add_edge("report", "decide")
+    graph.add_edge("decide", END)
+    return graph.compile(checkpointer=checkpointer)
