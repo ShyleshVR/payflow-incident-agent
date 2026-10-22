@@ -5,7 +5,8 @@ diagnosis is made and checked against that evidence, and a report is written.
 
     START -> intake -> load_runbook -> choose_checks <-> gather
                   \\-> END                    \\           /
-               (not firing)                 record_unchosen -> diagnose -> report -> END
+               (not firing)                 record_unchosen -> diagnose -> screen -> sort_sagas
+                                                -> propose -> report -> decide -> END
 
 The model appears in two steps. In choose_checks it names which of the runbook's checks to run
 next. In diagnose it names a cause from the runbook's list and quotes the evidence for it.
@@ -20,7 +21,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from agent import diagnosis, prompts, runbooks
+from agent import diagnosis, prompts, runbooks, sagas
 from agent.llm import Model, ModelError
 from agent.state import Investigation
 from agent.tools import Tools
@@ -186,12 +187,36 @@ async def screen(state: Investigation, runtime: Runtime[Deps]) -> dict:
         return {"diagnosis": state["diagnosis"] | {"set_aside": set_aside}}
 
 
+async def sort_sagas(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """Only for a runbook about parked sagas (it has parking codes): reads every parked saga of the
+    services the alert is about and sorts them, by the code each parked for, into those the agent
+    may propose to retry and those that need a person (agent/sagas.py). Code decides this, not the
+    model: the diagnosis explains the incident; it cannot add a saga to the list or drop one."""
+    if not state["runbook"].get("parking_codes"):
+        return {}
+    async with runtime.context.trace.step("sort_sagas") as step:
+        parked = await sagas.read(sagas.services_of(state["alerts"]), runtime.context.tools)
+        sorted_ = sagas.sort(parked, state["runbook"])
+        step["output"] = sorted_
+        return {"sagas": sorted_}
+
+
 async def propose(state: Investigation, runtime: Runtime[Deps]) -> dict:
-    """The runbook's next step for the cause found. None for unknown, or a cause without one."""
+    """The runbook's next step for the cause found. None for unknown, or a cause without one.
+    For parked sagas, the retry list code made goes with it, whatever the cause: a retry is
+    proposed exactly when that list has sagas on it, and a retryable cause with an empty list
+    proposes nothing (there is nothing to retry)."""
     async with runtime.context.trace.step("propose") as step:
         cause = state["diagnosis"]["root_cause"]
         text = next((item.get("proposal", "") for item in state["runbook"]["causes"] if item["name"] == cause), "")
-        proposal = {"cause": cause, "step": text} if text else None
+        sorted_ = state.get("sagas")
+        if sorted_ is None:
+            proposal = {"cause": cause, "step": text} if text else None
+        elif sorted_["retry"]:
+            proposal = {"cause": cause, "step": text if cause in state["runbook"]["retryable"] else sagas.RETRY_STEP,
+                        "retry": sorted_["retry"]}
+        else:
+            proposal = {"cause": cause, "step": text} if text and cause not in state["runbook"]["retryable"] else None
         step["output"] = proposal
         return {"proposal": proposal}
 
@@ -231,6 +256,8 @@ async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
             "proposal": state.get("proposal"),
             "decision": None,
         }
+        if state.get("sagas") is not None:
+            result["sagas"] = state["sagas"]
         step["output"] = result
         return {"result": result, "status": "completed"}
 
@@ -258,7 +285,8 @@ def build_graph(checkpointer=None):
     """checkpointer: where the state is saved after every step, so that a paused investigation can
     be resumed (the service's); None where nothing pauses."""
     graph = StateGraph(Investigation, context_schema=Deps)
-    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, propose, report, decide):
+    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, sort_sagas, propose,
+                 report, decide):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", lambda state: "load_runbook" if state["status"] == "investigating" else END,
@@ -270,7 +298,8 @@ def build_graph(checkpointer=None):
                                 ["record_unchosen", "choose_checks"])
     graph.add_edge("record_unchosen", "diagnose")
     graph.add_edge("diagnose", "screen")
-    graph.add_edge("screen", "propose")
+    graph.add_edge("screen", "sort_sagas")
+    graph.add_edge("sort_sagas", "propose")
     graph.add_edge("propose", "report")
     graph.add_edge("report", "decide")
     graph.add_edge("decide", END)

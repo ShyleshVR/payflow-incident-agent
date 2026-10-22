@@ -9,13 +9,14 @@ Looked up by the alert's exact name. There is no search and no fallback: an aler
 runbook is one nobody has thought through yet, and the agent says so instead of improvising.
 """
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
 
 _ALERT_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _CAUSE_NAME = re.compile(r"[a-z][a-z0-9_]*")
+_PARKING_CODE = re.compile(r"[A-Z][A-Z0-9_]*")
 # Always a possible answer, in every runbook: none of the listed causes, or the evidence does not say which.
 UNKNOWN = "unknown"
 # The section of the guidance that the report quotes as what to do. Every runbook must have it.
@@ -53,6 +54,11 @@ class Runbook:
     checks: tuple[Check, ...]
     guidance: str
     resolution: str    # the guidance's "What resolves it" section, without its heading
+    # For alerts about parked sagas: the codes PayFlow parks a saga for, per cause, so that code (not
+    # the model) sorts each parked saga into a cause; and the causes whose sagas the agent may
+    # propose to retry. Empty in every other runbook.
+    parking_codes: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    retryable: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         """For the investigation's state and trace, which hold plain data."""
@@ -116,14 +122,14 @@ def parse(text: str, file_name: str) -> Runbook:
             raise invalid(f"cause {name} needs a line saying what it means")
         causes.append(Cause(name=name, description=" ".join(description.split())))
     rules = {}
-    for field in ("shown_by", "requires_clear"):
-        listed_per_cause = header.get(field) or {}
+    for rule in ("shown_by", "requires_clear"):
+        listed_per_cause = header.get(rule) or {}
         if not isinstance(listed_per_cause, dict) or not all(isinstance(names, list) and names for names in listed_per_cause.values()):
-            raise invalid(f"{field} must list, for a cause, the checks it means")
+            raise invalid(f"{rule} must list, for a cause, the checks it means")
         if set(listed_per_cause) - {cause.name for cause in causes}:
-            raise invalid(f"{field} names a cause the header does not have: "
+            raise invalid(f"{rule} names a cause the header does not have: "
                           f"{sorted(set(listed_per_cause) - {cause.name for cause in causes})}")
-        rules[field] = listed_per_cause
+        rules[rule] = listed_per_cause
     proposals = header.get("proposals") or {}
     if not isinstance(proposals, dict) or not all(isinstance(text, str) and text.strip() for text in proposals.values()):
         raise invalid("proposals must give, for a cause, the next step proposed when it is found")
@@ -152,8 +158,32 @@ def parse(text: str, file_name: str) -> Runbook:
     resolution = _section(guidance, RESOLUTION_HEADING)
     if not resolution:
         raise invalid(f"the guidance needs a section \"{RESOLUTION_HEADING}\" (the report quotes it)")
+    parking_codes, retryable = _parking(header, {cause.name for cause in causes}, invalid)
     return Runbook(alert=header["alert"], based_on=str(header.get("based_on", "")), causes=tuple(causes),
-                   checks=tuple(checks), guidance=guidance, resolution=resolution)
+                   checks=tuple(checks), guidance=guidance, resolution=resolution,
+                   parking_codes=parking_codes, retryable=retryable)
+
+
+def _parking(header: dict, cause_names: set[str], invalid) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
+    codes = header.get("parking_codes") or {}
+    if not isinstance(codes, dict) or not all(isinstance(listed, list) and listed for listed in codes.values()):
+        raise invalid("parking_codes must list, for a cause, the codes PayFlow parks a saga for")
+    if set(codes) - cause_names:
+        raise invalid(f"parking_codes names a cause the header does not have: {sorted(set(codes) - cause_names)}")
+    seen: dict[str, str] = {}
+    for cause, listed in codes.items():
+        for code in listed:
+            if not isinstance(code, str) or not _PARKING_CODE.fullmatch(code):
+                raise invalid(f"parking code {code} must be written as PayFlow records it, such as CAPTURE_UNKNOWN")
+            if code in seen:
+                raise invalid(f"parking code {code} is listed for both {seen[code]} and {cause}")
+            seen[code] = cause
+    retryable = header.get("retryable") or []
+    if not isinstance(retryable, list) or not all(isinstance(name, str) for name in retryable):
+        raise invalid("retryable must list causes")
+    if set(retryable) - set(codes):
+        raise invalid(f"retryable names a cause without parking codes: {sorted(set(retryable) - set(codes))}")
+    return {cause: tuple(listed) for cause, listed in codes.items()}, tuple(retryable)
 
 
 def _section(guidance: str, heading: str) -> str:

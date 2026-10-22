@@ -8,6 +8,7 @@ trace alone, the report of any past investigation can be produced again at any t
 
 UNKNOWN = "unknown"
 SAGA_LIST_TOOL = "list_sagas_needing_attention"
+MAX_RETRIES = 50    # agent.sagas.MAX_RETRIES; the report is made from the trace alone
 
 
 AWAITING_DECISION = "awaiting_decision"
@@ -98,7 +99,7 @@ def _checks(document: dict) -> str:
 
 
 def _what_to_do(document: dict) -> str:
-    text = _proposal(document)
+    text = _proposal(document) or _parked(document)
     text += ("This agent takes no action. From the runbook:\n\n"
             + "\n".join(f"> {line}".rstrip() for line in document["runbook"]["resolution"].splitlines()))
     waiting = [finding for name, finding in _saga_findings(document)]
@@ -112,7 +113,9 @@ def _proposal(document: dict) -> str:
     proposal, decision = document["result"].get("proposal"), document["result"].get("decision")
     if not proposal:
         return ""
-    text = f"### Proposed next step\n\nFor `{proposal['cause']}`, from the runbook:\n\n> {proposal['step']}\n\n"
+    source = "from the runbook" if proposal["cause"] != UNKNOWN else "as code found sagas to retry"
+    text = f"### Proposed next step\n\nFor `{proposal['cause']}`, {source}:\n\n> {proposal['step']}\n\n"
+    text += _parked(document)
     if decision is None and document["status"] == AWAITING_DECISION:
         text += ("**Waiting for a decision.** Approve or reject it in the agent: `payflow-agent pending`, then "
                  "`payflow-agent approve <id>` or `payflow-agent reject <id> --reason \"...\"`.")
@@ -126,6 +129,39 @@ def _proposal(document: dict) -> str:
         if decision["decision"] == "approved":
             text += " Nothing was carried out: the agent does not act yet; the step is for a person to take."
     return text + "\n\n"
+
+
+def _parked(document: dict) -> str:
+    """For an alert about parked sagas: each one, as code sorted it by the code it parked for."""
+    sorted_ = document["result"].get("sagas")
+    if not sorted_:
+        return ""
+    text = ("### Parked sagas\n\nSorted by code, by what each one parked for, not by the model. Only a saga parked "
+            "because no answer came may be retried by the agent.\n\n")
+    columns = ("Saga", "Kind", "Parked in", "Parked for", "Cause", "Minutes")
+
+    def rows(listed):
+        return [(f"`{saga['id']}`", saga["kind"], saga["stopped_in"],
+                 f"`{saga['parked_for']}`" if saga["parked_for"] else "could not be read",
+                 f"`{saga['cause']}`" if saga["cause"] else "none listed for this code", str(saga["minutes"]))
+                for saga in listed]
+
+    if sorted_["retry"]:
+        text += f"**To retry ({len(sorted_['retry'])}):**\n\n" + _table(columns, rows(sorted_["retry"])) + "\n\n"
+    if sorted_["over_the_limit"]:
+        text += (f"{_count(sorted_['over_the_limit'], 'more saga')} could be retried, beyond the {MAX_RETRIES} one proposal "
+                 "may hold: a later investigation can propose them.\n\n")
+    if sorted_["needs_a_person"]:
+        text += (f"**Needs a person ({len(sorted_['needs_a_person'])}):** the agent will not retry these. A partner or "
+                 "the ledger said no (the same request would most likely be refused again), or the code is not one the "
+                 "runbook knows, or the saga could not be read.\n\n" + _table(columns, rows(sorted_["needs_a_person"])) + "\n\n")
+    if sorted_["not_listed"]:
+        text += f"{_count(sorted_['not_listed'], 'more parked saga')} not read: PayFlow lists {MAX_RETRIES} per service.\n\n"
+    for service, why in sorted_["unread"].items():
+        text += f"The parked sagas of {service} could not be read: {why}\n\n"
+    if not (sorted_["retry"] or sorted_["needs_a_person"] or sorted_["unread"]):
+        text += "None was parked when the agent looked.\n\n"
+    return text
 
 
 def _when(stamp: str) -> str:

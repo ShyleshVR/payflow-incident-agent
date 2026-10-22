@@ -34,6 +34,9 @@ class Investigation(TypedDict, total=False):
     # evidence that addressed the agent or the operator: not a fact, never acted on, shown in the report.
     diagnosis: dict
     result: dict              # what the report step concluded
+    # For an alert about parked sagas: code's sorting of them (agent/sagas.py): the retry list,
+    # those that need a person, and any not read.
+    sagas: dict
     # The runbook's next step for the cause found ({"cause", "step"}), or None; and what a person
     # decided about it ({"decision": approved | rejected | lapsed, "by", "at", "note"}), or None.
     proposal: dict | None

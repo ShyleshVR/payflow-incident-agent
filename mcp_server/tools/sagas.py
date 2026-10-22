@@ -212,3 +212,65 @@ def _shorten(text: str | None) -> str | None:
         return None
     text = " ".join(text.split())
     return text if len(text) <= MAX_TEXT else text[:MAX_TEXT - 1] + "…"
+
+
+# ---- every parked saga of one service, with the code it parked for (read by the agent's code)
+
+# The most parked sagas read for one service: the most one proposal may retry.
+PARKED_LIMIT = 50
+PARKED_LIST_PARAMS = {"stuckMinutes": STUCK_MINUTES, "limit": PARKED_LIMIT}
+LISTS = {"payment-service": PAYMENTS_LIST, "payout-service": PAYOUTS_LIST}
+
+
+class ParkedSaga(BaseModel):
+    id: str = Field(description="The payment (pay_...) or payout (po_...) it belongs to")
+    kind: Kind
+    stopped_in: str = Field(description="The step it parked in, which a retry resumes")
+    parked_for: str | None = Field(description="Why it parked, as PayFlow recorded it: the outcome of its last step, "
+                                               "such as CAPTURE_UNKNOWN or HOLD_REJECTED. None: its saga could not be read")
+    minutes: int = Field(description="Since its step began")
+    last_error: str | None
+
+
+class ParkedSagas(BaseModel):
+    service: str
+    parked: int = Field(description="All the service's parked sagas, listed or not")
+    sagas: list[ParkedSaga] = Field(description="The oldest first, at most PARKED_LIMIT")
+    not_listed: int = Field(description="Parked sagas beyond the limit, not read")
+
+
+def parked_to_read(service: str, answer: dict) -> list[dict]:
+    """The parked items of one service's attention list (it also holds stuck ones)."""
+    return [item for item in answer.get("sagas", []) if item["reason"] == "PARKED"][:PARKED_LIMIT]
+
+
+def parked(service: str, answer: dict, views: list[dict | list | None]) -> ParkedSagas:
+    """answer: the service's attention list; views: each parked item's saga view, in the order of
+    parked_to_read, or None where it could not be read (that saga's code is then unknown)."""
+    items = parked_to_read(service, answer)
+    listed = []
+    for item, view in zip(items, views, strict=True):
+        payout = service == "payout-service"
+        listed.append(ParkedSaga(
+            id=item["payoutId"] if payout else item["paymentId"],
+            kind="payout" if payout else _payment_kind(item),
+            stopped_in=item.get("stuckState") or item["state"],
+            parked_for=_parked_for(item["sagaId"], view),
+            minutes=item["minutesInStep"],
+            last_error=_shorten(item.get("lastError")),
+        ))
+    listed.sort(key=lambda saga: (-saga.minutes, saga.id))
+    return ParkedSagas(service=service, parked=answer["parked"], sagas=listed, not_listed=max(0, answer["parked"] - len(listed)))
+
+
+def _parked_for(saga_id: str, view: dict | list | None) -> str | None:
+    """The outcome of the saga's last step: PayFlow records the step's outcome, then parks the saga
+    with no other code. A payment's view lists all its sagas: the one asked about is matched by id."""
+    if view is None:
+        return None
+    saga = next((s for s in (view if isinstance(view, list) else [view]) if str(s.get("sagaId")) == str(saga_id)), None)
+    if saga is None or saga.get("state") != "REQUIRES_ATTENTION" or not saga.get("steps"):
+        return None
+    # the latest by time; of two at the same instant, the one recorded later
+    _, last = max(enumerate(saga["steps"]), key=lambda pair: (pair[1]["occurredAt"], pair[0]))
+    return last["outcome"]

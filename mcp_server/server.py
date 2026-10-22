@@ -5,6 +5,7 @@ Run:  .venv\\Scripts\\python.exe -m mcp_server.server     (http://127.0.0.1:8091
 import asyncio
 from contextlib import contextmanager
 from datetime import timedelta
+from typing import Literal
 
 import httpx
 from mcp.server.mcpserver import MCPServer
@@ -111,6 +112,10 @@ async def get_dependency_status(minutes: int = dependencies.DEFAULT_MINUTES) -> 
     return dependencies.assess(minutes, values)
 
 
+# Saga views read at once by list_parked_sagas: up to 50 are needed, without crowding PayFlow.
+_PARALLEL_READS = 8
+
+
 async def _or_none(call):
     """One of several sources not answering must not hide what the others say."""
     try:
@@ -162,6 +167,28 @@ async def get_saga(id: str) -> sagas.SagaDetail:
         return sagas.detail(id, saga_view, looked_up, alerts.utc_now())
     except LookupError as e:
         raise ToolError(str(e)) from e
+
+
+@server.tool()
+async def list_parked_sagas(service: Literal["payment-service", "payout-service"]) -> sagas.ParkedSagas:
+    """Every parked saga of one service (up to 50, the oldest first), each with the code it parked
+    for, such as CAPTURE_UNKNOWN (no answer from the processor) or HOLD_REJECTED (the ledger said
+    no). For the agent's own code, which sorts them into those that may be retried and those that
+    need a person; not one of a runbook's checks. Read-only, like every tool here."""
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        answer = await payflow.get(sagas.LISTS[service], sagas.PARKED_LIST_PARAMS)
+        limit = asyncio.Semaphore(_PARALLEL_READS)
+
+        async def view(item: dict):
+            saga_path = sagas.paths(item["payoutId"] if service == "payout-service" else item["paymentId"])[0]
+            async with limit:
+                try:
+                    return await _or_none(payflow.get(saga_path))
+                except (payflow.NotFound, payflow.BadRequest):
+                    return None        # this saga's code stays unknown; the others are still worth reading
+
+        views = await asyncio.gather(*(view(item) for item in sagas.parked_to_read(service, answer)))
+    return sagas.parked(service, answer, list(views))
 
 
 @server.tool()

@@ -169,7 +169,7 @@ def test_an_alert_without_a_runbook_is_refused_before_anything_is_asked_or_writt
 
     monkeypatch.setattr(payflow_agent, "investigate_live", refused)
     assert payflow_agent.main(["investigate", "KafkaConsumerLag"]) == payflow_agent.NO_RUNBOOK
-    assert "No runbook for KafkaConsumerLag yet. Runbooks exist for: ProcessorCircuitOpen." in capsys.readouterr().out
+    assert "No runbook for KafkaConsumerLag yet. Runbooks exist for: ProcessorCircuitOpen, SagaRequiresAttention." in capsys.readouterr().out
 
 
 def test_a_replay_runs_with_the_runbook_as_it_is_now_not_as_it_was_recorded(tmp_path):
