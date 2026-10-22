@@ -4,7 +4,8 @@
     GET  /investigations[?status=...]   the most recent investigations, newest first
     GET  /investigations/{id}           one investigation: its state, firings, and report when there is one
     POST /investigations/{id}/decision  approve or reject its proposal: {"decision": "approve" | "reject",
-                                        "by": "...", "note": "..."} (a rejection needs a note)
+                                        "by": "...", "note": "..."} (a rejection needs a note). An
+                                        approval is answered at once and carried out in the background
 
 A token (config.AGENT_TOKEN), when set, is required on every request as "Authorization: Bearer
 <token>": Alertmanager sends it from its receiver's settings.
@@ -115,8 +116,11 @@ def default_app() -> FastAPI:
         return await runs.investigate_live(alert_name, config.MCP_URL, config.RUNS_DIR, checkpointer=checkpoints.saver,
                                            ask_for_decision=True)
 
+    operator = runs.operator_login()
+
     async def resume(trace_id: str, decision: dict):
-        return await runs.resume(config.RUNS_DIR / f"{trace_id}.json", decision, checkpoints.saver)
+        return await runs.resume_live(config.RUNS_DIR / f"{trace_id}.json", decision, config.MCP_URL, checkpoints.saver,
+                                      operator)
 
     service = Service(Store(config.AGENT_DB), investigate, runbook_exists(config.RUNBOOKS_DIR), resume=resume)
     return create_app(service, config.RUNS_DIR, config.AGENT_TOKEN, resources=[checkpoints])

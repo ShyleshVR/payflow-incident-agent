@@ -53,8 +53,8 @@ def test_a_payment_reads_as_its_parked_saga_even_when_a_refund_is_newer():
 
     saga = asyncio.run(operator(payflow).saga("pay_1"))
 
-    assert saga == {"id": "pay_1", "state": "REQUIRES_ATTENTION", "stuck_state": "CAPTURING", "failure_code": None,
-                    "last_error": "processor unreachable", "finished": False}
+    assert saga == {"id": "pay_1", "saga": "s", "state": "REQUIRES_ATTENTION", "stuck_state": "CAPTURING",
+                    "parked_for": None, "failure_code": None, "last_error": "processor unreachable", "finished": False}
     assert payflow.requests == [("GET", "/api/v1/payments/pay_1/saga")]
 
 

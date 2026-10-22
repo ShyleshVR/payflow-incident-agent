@@ -60,7 +60,7 @@ def test_a_decision_resumes_the_workflow_which_records_it_in_the_trace_and_the_r
     assert done.document["result"]["decision"] == APPROVED
     text = done.report_path.read_text(encoding="utf-8")
     assert '**Approved** by alice at 2026-10-15 10:05:00 UTC: "called the processor"' in text
-    assert "Nothing was carried out: the agent does not act yet" in text
+    assert "Nothing was carried out: this step is for a person to take" in text
     with pytest.raises(ValueError, match="not waiting for a decision"):
         asyncio.run(run.resume(paused.path, APPROVED, saver))       # decided already
 
@@ -139,8 +139,11 @@ def test_an_investigation_with_a_proposal_waits_and_a_decision_completes_it(tmp_
 
     decided = asyncio.run(agent.decide(1, states.APPROVED, by="alice", note="  done  "))
 
+    # an approval is answered at once and carried out by the second worker
     assert (decided["status"], decided["decision"], decided["decided_by"], decided["decision_note"]) == (
-        "completed", "approved", "alice", "done")
+        "carrying_out", "approved", "alice", "done")
+    assert asyncio.run(agent.carry_out_one()) == 1 and asyncio.run(agent.carry_out_one()) is None
+    assert agent.store.investigation(1)["status"] == "completed"
     assert load(tmp_path / f"{decided['trace_id']}.json")["result"]["decision"]["by"] == "alice"
     for wrong, why in (((1, states.REJECTED, "bob", "late"), "is completed, not waiting for a decision"),
                        ((1, "maybe", "bob", ""), "approved or rejected")):
@@ -205,9 +208,10 @@ def test_the_command_line_lists_approves_and_rejects_through_the_service(tmp_pat
     assert payflow_agent.main(["approve", "1", "--note", "on it"]) == payflow_agent.DONE
     said = capsys.readouterr().out
     assert "Investigation 1 (ProcessorCircuitOpen: processor_outage): approved by carol" in said
-    assert "Nothing is carried out: the agent does not act yet." in said
+    assert "Nothing is carried out: this step is yours to take." in said      # no retry list in this proposal
     assert payflow_agent.main(["reject", "1", "--reason", "too late"]) == payflow_agent.FAILED
-    assert "is completed, not waiting for a decision" in capsys.readouterr().out
+    # carrying_out, or already completed: the client runs the service's workers while it is open
+    assert "not waiting for a decision" in capsys.readouterr().out
     assert payflow_agent.main(["pending"]) == payflow_agent.DONE and "Nothing waits for a decision." in capsys.readouterr().out
     with pytest.raises(SystemExit):
         payflow_agent.main(["reject", "1"])                                      # a reason is required

@@ -11,12 +11,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # The states of an investigation. queued -> running -> completed | awaiting_decision |
-# not_firing | failed; awaiting_decision -> completed once a person decides (or it lapses);
+# not_firing | failed; awaiting_decision -> completed once a person rejects it (or it lapses);
+# awaiting_decision -> carrying_out once a person approves it -> completed | failed;
 # no_runbook: recorded, never run (the agent has no runbook for the alert).
 QUEUED, RUNNING, COMPLETED, NOT_FIRING, FAILED, NO_RUNBOOK = "queued", "running", "completed", "not_firing", "failed", "no_runbook"
 AWAITING_DECISION = "awaiting_decision"
+CARRYING_OUT = "carrying_out"
 # An investigation still open to new firings of its alert: one incident, one investigation.
-OPEN = (QUEUED, RUNNING, AWAITING_DECISION)
+OPEN = (QUEUED, RUNNING, AWAITING_DECISION, CARRYING_OUT)
 # What a decision can be: by a person, or lapsed (every firing behind it resolved first).
 APPROVED, REJECTED, LAPSED = "approved", "rejected", "lapsed"
 
@@ -35,7 +37,8 @@ CREATE TABLE IF NOT EXISTS investigations (
     decision TEXT,
     decided_by TEXT,
     decided_at TEXT,
-    decision_note TEXT
+    decision_note TEXT,
+    to_retry INTEGER
 );
 CREATE TABLE IF NOT EXISTS firings (
     fingerprint TEXT NOT NULL,
@@ -65,9 +68,10 @@ class Store:
         # a file made before decisions existed gets their columns
         present = {row["name"] for row in self._db.execute("PRAGMA table_info(investigations)")}
         with self._db:
-            for column in ("proposal", "decision", "decided_by", "decided_at", "decision_note"):
+            for column, kind in (("proposal", "TEXT"), ("decision", "TEXT"), ("decided_by", "TEXT"), ("decided_at", "TEXT"),
+                                 ("decision_note", "TEXT"), ("to_retry", "INTEGER")):
                 if column not in present:
-                    self._db.execute(f"ALTER TABLE investigations ADD COLUMN {column} TEXT")
+                    self._db.execute(f"ALTER TABLE investigations ADD COLUMN {column} {kind}")
         self._now = now
 
     # ---- firings
@@ -118,12 +122,15 @@ class Store:
 
     def open_for(self, alert_name: str) -> dict | None:
         """The investigation of this alert that is queued, running or waiting for a decision, if any."""
-        row = self._db.execute("SELECT * FROM investigations WHERE alert_name = ? AND status IN (?, ?, ?) ORDER BY id LIMIT 1",
-                               (alert_name, *OPEN)).fetchone()
+        row = self._db.execute(f"SELECT * FROM investigations WHERE alert_name = ? AND status IN ({', '.join('?' * len(OPEN))}) "
+                               "ORDER BY id LIMIT 1", (alert_name, *OPEN)).fetchone()
         return dict(row) if row else None
 
     def next_queued(self) -> dict | None:
-        row = self._db.execute("SELECT * FROM investigations WHERE status = ? ORDER BY id LIMIT 1", (QUEUED,)).fetchone()
+        return self.oldest(QUEUED)
+
+    def oldest(self, status: str) -> dict | None:
+        row = self._db.execute("SELECT * FROM investigations WHERE status = ? ORDER BY id LIMIT 1", (status,)).fetchone()
         return dict(row) if row else None
 
     def requeue_running(self) -> list[int]:

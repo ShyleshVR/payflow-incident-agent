@@ -8,6 +8,7 @@ from agent import config, report, runbooks
 from agent import trace as traces
 from agent.graph import Deps, build_graph
 from agent.llm import LocalModel, Model, RecordingModel
+from agent.operator import Operator
 from agent.tools import LiveTools, RecordingTools, ReplayTools, Tools
 from agent.trace import Trace
 
@@ -56,17 +57,26 @@ async def investigate(alert_name: str, tools: Tools, model: Model, runs_dir: Pat
     return trace
 
 
-async def resume(trace_path: Path, decision: dict, checkpointer, runbooks_dir: Path | None = None, now=traces.utc_now) -> Trace:
+async def resume(trace_path: Path, decision: dict, checkpointer, runbooks_dir: Path | None = None, now=traces.utc_now,
+                 tools: Tools | None = None, operator: Operator | None = None, **timing) -> Trace:
     """Finishes an investigation paused at its proposal, with a person's decision
     ({"decision": approved | rejected | lapsed, "by", "at", "note"}). It may run in another process
     than the one that paused it: the workflow's state comes from the checkpointer, its trace from
-    the file. Nothing is asked of the tools or the model."""
+    the file. The model is never asked. An approved retry list is carried out with the tools (the
+    partners' state, recorded in the trace) and the operator login; nothing else uses them.
+    Called again after a restart that cut the carrying out short, it goes on from the last saga
+    done: the decision is already in the saved state and is not taken again.
+    timing: sleep and clock, for tests of the watch."""
     trace = Trace.reopen(trace_path, now)
     if trace.document["status"] != AWAITING_DECISION:
         raise ValueError(f"investigation {trace.id} is {trace.document['status']}, not waiting for a decision")
-    deps = Deps(tools=_Unused("tools"), model=_Unused("model"), trace=trace, runbooks_dir=runbooks_dir or config.RUNBOOKS_DIR,
-                ask_for_decision=True)
-    final = await build_graph(checkpointer).ainvoke(Command(resume=decision), config=_thread(trace.id, checkpointer), context=deps)
+    deps = Deps(tools=RecordingTools(tools, trace) if tools is not None else _Unused("tools"), model=_Unused("model"),
+                trace=trace, runbooks_dir=runbooks_dir or config.RUNBOOKS_DIR, ask_for_decision=True, operator=operator,
+                **timing)
+    # After a restart past the decision, LangGraph goes on from the last saved step: the decision
+    # already answered the pause, and this one is not used (tests/test_carry_out.py).
+    final = await build_graph(checkpointer).ainvoke(Command(resume=decision), config=_thread(trace.id, checkpointer),
+                                                    context=deps)
     trace.finish("completed", result=final["result"])
     trace.write_report(report.render(trace.document))
     return trace
@@ -88,6 +98,28 @@ class _Unused:
 
     async def ask(self, *args, **kwargs):
         raise RuntimeError(f"the {self._what} was asked after the decision")
+
+
+async def resume_live(trace_path: Path, decision: dict, mcp_url: str, checkpointer, operator: Operator) -> Trace:
+    """resume() in the service. Only an approval can carry anything out, so only an approval
+    connects to the MCP server."""
+    if decision["decision"] != "approved":
+        return await resume(trace_path, decision, checkpointer)
+    failure: Exception | None = None
+    trace: Trace | None = None
+    async with Client(mcp_url) as client:
+        try:
+            trace = await resume(trace_path, decision, checkpointer, tools=LiveTools(client), operator=operator)
+        except Exception as e:  # noqa: BLE001 - raised again below, outside the block (see investigate_live)
+            failure = e
+    if failure is not None:
+        raise failure
+    return trace
+
+
+def operator_login() -> Operator:
+    """The agent's operator login to PayFlow, from the settings (config.PAYFLOW_OPERATOR_*)."""
+    return Operator(config.PAYFLOW_URL, config.PAYFLOW_OPERATOR_CLIENT_ID, config.PAYFLOW_OPERATOR_CLIENT_SECRET)
 
 
 async def investigate_live(alert_name: str, mcp_url: str, runs_dir: Path, checkpointer=None,

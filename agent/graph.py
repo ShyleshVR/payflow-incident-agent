@@ -7,6 +7,11 @@ diagnosis is made and checked against that evidence, and a report is written.
                   \\-> END                    \\           /
                (not firing)                 record_unchosen -> diagnose -> screen -> sort_sagas
                                                 -> propose -> report -> decide -> END
+                                                         \\-> retry <-> retry -> watch -> END
+                                                       (an approved retry list)
+
+After an approved retry list, everything is code: each saga is checked again and retried, one
+per step (so the saved state after a restart says exactly which are done), and then watched.
 
 The model appears in two steps. In choose_checks it names which of the runbook's checks to run
 next. In diagnose it names a cause from the runbook's list and quotes the evidence for it.
@@ -14,15 +19,18 @@ Everything else is code: which checks and causes exist, how checks are run, when
 whether each quote is really in the evidence.
 """
 import asyncio
-from dataclasses import dataclass
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from agent import diagnosis, prompts, runbooks, sagas
+from agent import carry_out, diagnosis, prompts, runbooks, sagas
 from agent.llm import Model, ModelError
+from agent.operator import Operator, OperatorUnavailable, Refused
 from agent.state import Investigation
 from agent.tools import Tools
 from agent.trace import Trace
@@ -47,6 +55,10 @@ class Deps:
     # True in the service: the workflow pauses at a proposal until a person decides (it then needs
     # a checkpointer). False on the command line and in evals: the proposal is reported, not asked.
     ask_for_decision: bool = False
+    # The operator login, to carry out an approved retry list (only the service's resume has one).
+    operator: Operator | None = None
+    sleep: Callable[[float], Awaitable[None]] = field(default=asyncio.sleep)
+    clock: Callable[[], float] = field(default=time.monotonic)
 
 
 class InvestigationError(Exception):
@@ -224,8 +236,8 @@ async def propose(state: Investigation, runtime: Runtime[Deps]) -> dict:
 async def decide(state: Investigation, runtime: Runtime[Deps]) -> dict:
     """Waits for a person to approve or reject the proposal (only in the service, and only when
     there is one). The workflow pauses here: its state is saved, and a decision (POST
-    /investigations/{id}/decision) resumes it, even in another process. Approving records the
-    decision; nothing is carried out yet."""
+    /investigations/{id}/decision) resumes it, even in another process. An approved retry list is
+    carried out next (retry, watch); any other approval only records the decision."""
     if not (state.get("proposal") and runtime.context.ask_for_decision):
         return {}
     # Outside the trace's step: the pause leaves the step, and the step is run again on resume.
@@ -234,6 +246,66 @@ async def decide(state: Investigation, runtime: Runtime[Deps]) -> dict:
         decision = {key: answer.get(key) for key in ("decision", "by", "at", "note")}
         step["output"] = decision
         return {"decision": decision, "result": state["result"] | {"decision": decision}}
+
+
+async def retry(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """The next saga of the approved list: checked again, and retried if it still qualifies
+    (agent/carry_out.py). One saga per step: the state saved after each says which are done, so a
+    restart goes on with the next and never retries one twice."""
+    deps = runtime.context
+    if deps.operator is None:
+        raise InvestigationError("an approved retry list needs the operator login, and none was given")
+    async with deps.trace.step("retry") as step:
+        done = state.get("carried_out", [])
+        row = _next_to_retry(state)
+        outcome = await carry_out.retry_one(row, deps.operator, deps.tools)
+        step["output"] = outcome
+        return {"carried_out": [*done, outcome]}
+
+
+async def watch(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """Watches each retried saga until it finishes or parks again, for up to WATCH_SECONDS, and
+    records how each ended (or that it was still running)."""
+    deps = runtime.context
+    async with deps.trace.step("watch") as step:
+        carried = [dict(item) for item in state.get("carried_out", [])]
+        waiting = {index: item for index, item in enumerate(carried) if item["outcome"] == carry_out.RETRIED}
+        deadline = deps.clock() + carry_out.WATCH_SECONDS
+        last_seen: dict[int, str] = {}
+        while waiting:
+            for index, item in list(waiting.items()):
+                try:
+                    now = await deps.operator.saga(item["id"], item["saga"])
+                except (Refused, OperatorUnavailable) as e:
+                    last_seen[index] = f"could not be read: {e}"
+                    continue
+                ended = carry_out.settled(now)
+                if ended:
+                    item["ended"] = ended
+                    del waiting[index]
+                else:
+                    last_seen[index] = f"still running, in {now['state']}"
+            if not waiting or deps.clock() >= deadline:
+                break
+            await deps.sleep(carry_out.WATCH_EVERY_SECONDS)
+        for index, item in waiting.items():
+            item["ended"] = f"{last_seen.get(index, 'not seen')} after {carry_out.WATCH_SECONDS // 60} minutes of watching"
+        step["output"] = {"watched_seconds": carry_out.WATCH_SECONDS, "sagas": carried}
+        return {"carried_out": carried, "result": state["result"] | {"carried_out": carried}}
+
+
+def _next_to_retry(state: Investigation) -> dict | None:
+    done = {item["id"] for item in state.get("carried_out", [])}
+    return next((row for row in state["proposal"]["retry"] if row["id"] not in done), None)
+
+
+def _after_decide(state: Investigation) -> str:
+    approved = (state.get("decision") or {}).get("decision") == "approved"
+    return "retry" if approved and (state.get("proposal") or {}).get("retry") else END
+
+
+def _after_retry(state: Investigation) -> str:
+    return "retry" if _next_to_retry(state) else "watch"
 
 
 async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
@@ -286,7 +358,7 @@ def build_graph(checkpointer=None):
     be resumed (the service's); None where nothing pauses."""
     graph = StateGraph(Investigation, context_schema=Deps)
     for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, sort_sagas, propose,
-                 report, decide):
+                 report, decide, retry, watch):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", lambda state: "load_runbook" if state["status"] == "investigating" else END,
@@ -302,5 +374,7 @@ def build_graph(checkpointer=None):
     graph.add_edge("sort_sagas", "propose")
     graph.add_edge("propose", "report")
     graph.add_edge("report", "decide")
-    graph.add_edge("decide", END)
+    graph.add_conditional_edges("decide", _after_decide, ["retry", END])
+    graph.add_conditional_edges("retry", _after_retry, ["retry", "watch"])
+    graph.add_edge("watch", END)
     return graph.compile(checkpointer=checkpointer)

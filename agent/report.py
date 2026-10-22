@@ -100,8 +100,11 @@ def _checks(document: dict) -> str:
 
 def _what_to_do(document: dict) -> str:
     text = _proposal(document) or _parked(document)
-    text += ("This agent takes no action. From the runbook:\n\n"
-            + "\n".join(f"> {line}".rstrip() for line in document["runbook"]["resolution"].splitlines()))
+    retries = (document["result"].get("proposal") or {}).get("retry")
+    text += ("The agent retries parked sagas only when a person approves the list above; it takes no other action. "
+             if retries else "This agent takes no action. ")
+    text += ("From the runbook:\n\n"
+             + "\n".join(f"> {line}".rstrip() for line in document["runbook"]["resolution"].splitlines()))
     waiting = [finding for name, finding in _saga_findings(document)]
     if waiting:
         text += "\n\nSagas waiting for an operator, according to the checks:\n\n" + "\n".join(f"- {line}" for line in waiting)
@@ -126,9 +129,33 @@ def _proposal(document: dict) -> str:
     else:
         text += f"**{decision['decision'].capitalize()}** by {decision['by']} at {_when(decision['at'])}"
         text += f": \"{decision['note']}\"." if decision.get("note") else "."
-        if decision["decision"] == "approved":
-            text += " Nothing was carried out: the agent does not act yet; the step is for a person to take."
+        if decision["decision"] == "approved" and "carried_out" in document["result"]:
+            text += "\n\n" + _carried_out(document["result"]["carried_out"])
+        elif decision["decision"] == "approved":
+            text += " Nothing was carried out: this step is for a person to take."
     return text + "\n\n"
+
+
+_OUTCOME_WORDS = {"retried": "Retried", "skipped": "Skipped", "refused": "Refused by PayFlow",
+                  "not_reached": "Not carried out: PayFlow did not answer"}
+
+
+def _carried_out(carried: list[dict]) -> str:
+    """What became of each saga of the approved list: retried and how it ended, or why not."""
+    retried = sum(item["outcome"] == "retried" for item in carried)
+    text = (f"### What was carried out\n\nEach saga was checked again just before it was retried (still parked for the "
+            f"same code; its partner answering now), one at a time; {retried} of {len(carried)} were retried, and each "
+            "retried one was watched until it finished or parked again.\n\n")
+    rows = []
+    for item in carried:
+        if item["outcome"] == "retried":
+            what = item.get("ended") or "not watched"
+            if item.get("partner"):
+                what += f" (before it: {item['partner']})"
+        else:
+            what = item.get("why") or ""
+        rows.append((f"`{item['id']}`", f"`{item['parked_for']}`", _OUTCOME_WORDS.get(item["outcome"], item["outcome"]), what))
+    return text + _table(("Saga", "Parked for", "Outcome", "How it ended, or why not"), rows)
 
 
 def _parked(document: dict) -> str:

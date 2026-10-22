@@ -39,10 +39,11 @@ class Operator:
         self._expires_at = 0.0
         self._lock = asyncio.Lock()
 
-    async def saga(self, saga_id: str) -> dict:
-        """The saga as it is now: {"id", "state", "stuck_state", "failure_code", "last_error", "finished"}.
-        For a payment, the saga waiting for an operator if there is one, else its most recent."""
-        return _summary(saga_id, await self._call("GET", f"{_path(saga_id)}/saga"))
+    async def saga(self, saga_id: str, saga: str | None = None) -> dict:
+        """The saga as it is now: {"id", "saga", "state", "stuck_state", "parked_for", "failure_code",
+        "last_error", "finished"}. For a payment (which can have several), the one whose sagaId is
+        `saga` when given; else the one waiting for an operator if there is one, else its most recent."""
+        return _summary(saga_id, await self._call("GET", f"{_path(saga_id)}/saga"), saga)
 
     async def retry(self, saga_id: str) -> dict:
         """Resumes a parked saga at the step it stopped at. Returns it as it is just after."""
@@ -109,18 +110,31 @@ def _path(saga_id: str) -> str:
     raise ValueError(f"not a payment (pay_...) or payout (po_...) id: {saga_id!r}")
 
 
-def _summary(saga_id: str, view: Any) -> dict:
+def _summary(saga_id: str, view: Any, wanted: str | None = None) -> dict:
     """A payment's view is a list of its sagas (the payment's and its refunds'); a payout's, one saga."""
-    if isinstance(view, list):
-        if not view:
-            raise Refused(f"PayFlow has no saga for {saga_id}")
-        parked = [saga for saga in view if saga.get("state") == PARKED]
-        saga = parked[0] if parked else max(view, key=lambda item: item.get("createdAt") or "")
+    sagas = view if isinstance(view, list) else [view]
+    if not sagas:
+        raise Refused(f"PayFlow has no saga for {saga_id}")
+    if wanted is not None:
+        saga = next((item for item in sagas if str(item.get("sagaId")) == wanted), None)
+        if saga is None:
+            raise Refused(f"PayFlow has no saga {wanted} for {saga_id}")
     else:
-        saga = view
-    return {"id": saga_id, "state": saga.get("state"), "stuck_state": saga.get("stuckState"),
+        parked = [item for item in sagas if item.get("state") == PARKED]
+        saga = parked[0] if parked else max(sagas, key=lambda item: item.get("createdAt") or "")
+    return {"id": saga_id, "saga": None if saga.get("sagaId") is None else str(saga["sagaId"]),
+            "state": saga.get("state"), "stuck_state": saga.get("stuckState"), "parked_for": _parked_for(saga),
             "failure_code": saga.get("failureCode"), "last_error": saga.get("lastError"),
             "finished": saga.get("finishedAt") is not None}
+
+
+def _parked_for(saga: dict) -> str | None:
+    """For a parked saga, the code it parked for: PayFlow records it as its last step's outcome."""
+    steps = saga.get("steps") or []
+    if saga.get("state") != PARKED or not steps:
+        return None
+    _, last = max(enumerate(steps), key=lambda pair: (pair[1].get("occurredAt") or "", pair[0]))
+    return last.get("outcome")
 
 
 def _detail(response: httpx.Response) -> str:

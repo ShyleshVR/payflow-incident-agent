@@ -12,6 +12,11 @@ and is tried again a little later; any other failure ends it as failed, with the
 An investigation that reaches a proposal waits for a person's decision (decide): approved or
 rejected, which resumes its paused workflow. When every firing behind it has resolved before
 anyone decided, it lapses: the workflow is resumed with that instead.
+
+A rejection or a lapse is recorded at once. An approval is carried out in the background, by a
+second worker beside the investigations (a retry list takes minutes, with its watch): the
+decision is answered at once, the investigation is carrying_out, then completed. One that a
+restart cut short is carried on from where it stopped.
 """
 import asyncio
 import logging
@@ -41,6 +46,7 @@ class Service:
         self._has_runbook = has_runbook
         self._retry_after = retry_after
         self._wake: asyncio.Event | None = None
+        self._wake_carrying_out: asyncio.Event | None = None
         self._deciding = asyncio.Lock()
 
     def receive(self, notification: dict) -> dict:
@@ -89,8 +95,9 @@ class Service:
 
     async def decide(self, investigation_id: int, decision: str, by: str, note: str = "") -> dict:
         """A decision on a waiting investigation's proposal: approved, rejected (with a reason) or
-        lapsed. Resumes its workflow, which records the decision in the trace and the report.
-        Approving carries nothing out yet."""
+        lapsed. A rejection or a lapse resumes its workflow at once, which records the decision in
+        the trace and the report. An approval is recorded here and carried out in the background
+        (carry_out_one): the answer does not wait for it."""
         if decision not in (states.APPROVED, states.REJECTED, states.LAPSED):
             raise DecisionRefused(f"a decision is approved or rejected, not {decision!r}")
         if decision == states.REJECTED and not note.strip():
@@ -102,10 +109,38 @@ class Service:
             if found["status"] != states.AWAITING_DECISION:
                 raise DecisionRefused(f"investigation {investigation_id} is {found['status']}, not waiting for a decision")
             at = states.utc_now()
+            recorded = {"decision": decision, "decided_by": by, "decided_at": at, "decision_note": note.strip() or None}
+            if decision == states.APPROVED:
+                self.store.update(investigation_id, status=states.CARRYING_OUT, **recorded)
+                if self._wake_carrying_out is not None:
+                    self._wake_carrying_out.set()
+                return self.store.investigation(investigation_id)
             await self._resume(found["trace_id"], {"decision": decision, "by": by, "at": at, "note": note.strip()})
-            self.store.update(investigation_id, status=states.COMPLETED, decision=decision, decided_by=by, decided_at=at,
-                              decision_note=note.strip() or None)
+            self.store.update(investigation_id, status=states.COMPLETED, **recorded)
             return self.store.investigation(investigation_id)
+
+    async def carry_out_one(self) -> int | None:
+        """Carries out the oldest approved investigation (resumes its workflow with the approval).
+        None when nothing is approved and waiting. When the MCP server cannot be reached it stays
+        carrying_out and is tried again later; any other failure ends it as failed."""
+        approved = self.store.oldest(states.CARRYING_OUT)
+        if approved is None:
+            return None
+        investigation_id = approved["id"]
+        decision = {"decision": approved["decision"], "by": approved["decided_by"], "at": approved["decided_at"],
+                    "note": approved["decision_note"] or ""}
+        try:
+            await self._resume(approved["trace_id"], decision)
+        except Exception as e:  # every failure is this investigation's outcome
+            if refused_connection(e):
+                self.store.update(investigation_id, error="waiting: the MCP server refused the connection (is it running?)")
+                raise _Unreachable from e
+            log.exception("carrying out investigation %s failed", investigation_id)
+            self.store.update(investigation_id, status=states.FAILED, finished_at=states.utc_now(),
+                              error=f"{type(e).__name__}: {e}")
+        else:
+            self.store.update(investigation_id, status=states.COMPLETED, finished_at=states.utc_now(), error=None)
+        return investigation_id
 
     async def process_one(self) -> int | None:
         """Runs the oldest queued investigation to its end. None when nothing is queued."""
@@ -130,29 +165,35 @@ class Service:
         else:
             document = trace.document
             waiting = document.get("status") == states.AWAITING_DECISION
-            proposal = (document["result"].get("proposal") or {}).get("step")
+            proposal = document["result"].get("proposal") or {}
             self.store.update(investigation_id, status=states.AWAITING_DECISION if waiting else states.COMPLETED,
                               finished_at=states.utc_now(), trace_id=document["id"],
-                              root_cause=document["result"]["diagnosis"]["root_cause"], proposal=proposal)
+                              root_cause=document["result"]["diagnosis"]["root_cause"], proposal=proposal.get("step"),
+                              to_retry=len(proposal.get("retry", [])) or None)
         return investigation_id
 
     async def run(self) -> None:
-        """Works through the queue for as long as the service runs."""
+        """Works through the queue, and carries out approvals, for as long as the service runs."""
         self._wake = asyncio.Event()
+        self._wake_carrying_out = asyncio.Event()
         requeued = self.store.requeue_running()
         if requeued:
             log.info("queued again after a restart: %s", requeued)
+        await asyncio.gather(self._loop(self.process_one, self._wake, "investigation"),
+                             self._loop(self.carry_out_one, self._wake_carrying_out, "carrying out"))
+
+    async def _loop(self, work: Callable[[], Awaitable[int | None]], wake: asyncio.Event, what: str) -> None:
         while True:
             try:
-                if await self.process_one() is not None:
+                if await work() is not None:
                     continue
                 timeout = None
             except _Unreachable as e:
-                log.warning("investigation postponed: %s", e.__cause__)
+                log.warning("%s postponed: %s", what, e.__cause__)
                 timeout = self._retry_after
-            self._wake.clear()
+            wake.clear()
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout)
+                await asyncio.wait_for(wake.wait(), timeout)
             except TimeoutError:
                 pass
 

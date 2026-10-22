@@ -41,3 +41,6 @@ class Investigation(TypedDict, total=False):
     # decided about it ({"decision": approved | rejected | lapsed, "by", "at", "note"}), or None.
     proposal: dict | None
     decision: dict | None
+    # What became of each saga of an approved retry list, in order (agent/carry_out.py): retried,
+    # skipped, refused or not reached, with why; and, once watched, how each retried one ended.
+    carried_out: list[dict]

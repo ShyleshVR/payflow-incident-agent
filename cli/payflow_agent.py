@@ -214,8 +214,12 @@ def _decide(investigation_id: int, command: str, note: str) -> int:
     decided = answer.json()
     print(f"Investigation {investigation_id} ({decided['alert_name']}: {decided['root_cause']}): {decided['decision']} by "
           f"{decided['decided_by']} at {decided['decided_at']}.")
-    if decided["decision"] == "approved":
-        print("Nothing is carried out: the agent does not act yet. The step is yours to take.")
+    if decided["decision"] == "approved" and decided.get("to_retry"):
+        print(f"The agent is carrying it out now: it checks and retries the {decided['to_retry']} saga(s) proposed, one at "
+              f"a time, then watches them for up to 5 minutes. The report says what became of each: "
+              f"runs/{decided['trace_id']}.md")
+    elif decided["decision"] == "approved":
+        print("Nothing is carried out: this step is yours to take.")
     return DONE
 
 
