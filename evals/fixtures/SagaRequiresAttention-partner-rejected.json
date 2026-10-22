@@ -1,0 +1,271 @@
+{
+  "id": "derived-SagaRequiresAttention-partner-rejected",
+  "alert_name": "SagaRequiresAttention",
+  "derived_from": "SagaRequiresAttention-captures-parked-3.json",
+  "derived": "Three captures parked CAPTURE_REJECTED: the processor answered each with a refusal (422 invalid_amount), so retrying the same capture would be refused again. The processor answered every call; payment-service logged each park.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 2,
+            "alerts": [
+              {
+                "alert": "SagaRequiresAttention",
+                "severity": "critical",
+                "about": {
+                  "application": "payment-service"
+                },
+                "firing_for_minutes": 0,
+                "summary": "3 saga(s) parked for an operator"
+              },
+              {
+                "alert": "PayoutsFailing",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 47,
+                "summary": "4.013051917612322 payouts failed or were returned in the last hour"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_dependency_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "processor": {
+              "called_by": "payment-service",
+              "calls": 80,
+              "succeeded": 77,
+              "declined": 0,
+              "rejected": 3,
+              "unanswered": 0,
+              "unanswered_percent": 0.0,
+              "avg_ms": 50,
+              "operations": [
+                {
+                  "operation": "authorize",
+                  "calls": 41,
+                  "succeeded": 41,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 50
+                },
+                {
+                  "operation": "capture",
+                  "calls": 39,
+                  "succeeded": 36,
+                  "declined": 0,
+                  "rejected": 3,
+                  "unanswered": 0,
+                  "avg_ms": 50
+                }
+              ]
+            },
+            "processor_circuit_breaker": {
+              "state": "closed",
+              "instances": 2,
+              "instances_not_closed": 0,
+              "opened_in_window": false,
+              "calls_refused": 0,
+              "recent_failure_percent": null
+            },
+            "bank": {
+              "called_by": "payout-service",
+              "calls": 0,
+              "succeeded": 0,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 0,
+              "unanswered_percent": 0.0,
+              "avg_ms": null,
+              "operations": []
+            },
+            "concerns": [
+              "the processor rejected 3 request(s) as wrong (capture 3): a bug or a misconfiguration on PayFlow's side"
+            ]
+          }
+        },
+        {
+          "tool": "list_sagas_needing_attention",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "stuck_after_minutes": 15,
+            "payments_parked": 3,
+            "payments_stuck": 0,
+            "payouts_parked": 0,
+            "payouts_stuck": 0,
+            "sagas": [
+              {
+                "id": "pay_3d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "reason": "parked",
+                "stopped_in": "CAPTURING",
+                "minutes": 11,
+                "attempts": 3,
+                "failure_code": null,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              },
+              {
+                "id": "pay_2d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "reason": "parked",
+                "stopped_in": "CAPTURING",
+                "minutes": 10,
+                "attempts": 3,
+                "failure_code": null,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              },
+              {
+                "id": "pay_1d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "reason": "parked",
+                "stopped_in": "CAPTURING",
+                "minutes": 9,
+                "attempts": 3,
+                "failure_code": null,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              }
+            ],
+            "not_listed": 0,
+            "concerns": [
+              "3 payment saga(s) are parked and wait for an operator's retry; the oldest, pay_3d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f, for 11 minutes in CAPTURING"
+            ]
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "ledger-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 3,
+            "warning_lines": 0,
+            "groups": [
+              {
+                "level": "ERROR",
+                "logger": "c.s.p.saga.SagaOrchestrator",
+                "message": "Saga needs attention. sagaId=c1a2c3d4-0001-4e5f-8a9b-1c2d3e4f5a61, paymentId=1d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f, state=CAPTURING, reason=Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount",
+                "cause": null,
+                "count": 3,
+                "pods": 2,
+                "last_seen_minutes_ago": 1,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": [
+              "3 ERROR line(s) of 1 kind(s) in the last 15 minutes"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payout-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payout-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "sort_sagas",
+      "tool_calls": [
+        {
+          "tool": "list_parked_sagas",
+          "arguments": {
+            "service": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "payment-service",
+            "parked": 3,
+            "sagas": [
+              {
+                "id": "pay_3d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "stopped_in": "CAPTURING",
+                "parked_for": "CAPTURE_REJECTED",
+                "minutes": 11,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              },
+              {
+                "id": "pay_2d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "stopped_in": "CAPTURING",
+                "parked_for": "CAPTURE_REJECTED",
+                "minutes": 10,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              },
+              {
+                "id": "pay_1d4e6f80-1a2b-4c3d-9e8f-0a1b2c3d4e5f",
+                "kind": "payment",
+                "stopped_in": "CAPTURING",
+                "parked_for": "CAPTURE_REJECTED",
+                "minutes": 9,
+                "last_error": "Processor rejected the capture: REJECTED 422 invalid_amount: Capture amount exceeds the authorized amount"
+              }
+            ],
+            "not_listed": 0
+          }
+        }
+      ]
+    }
+  ]
+}

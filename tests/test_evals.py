@@ -260,14 +260,14 @@ def test_a_derived_recording_is_a_live_one_with_some_checks_failing():
 
 
 def test_the_derived_recordings_in_the_repository_are_what_derive_makes(tmp_path):
-    for derivation in derive.DERIVATIONS:
+    for derivation in derive.all_derivations():
         committed = json.loads((scenario.FIXTURES_DIR / derivation.recording).read_text(encoding="utf-8"))
         assert committed == derive.derive(derivation), f"{derivation.recording} is stale: run python -m evals.derive"
     # writing them is the same thing, to a file
-    for name in {derivation.source for derivation in derive.DERIVATIONS}:
+    for name in {derivation.source for derivation in derive.all_derivations()}:
         shutil.copy(scenario.FIXTURES_DIR / name, tmp_path / name)
     written = derive.write_all(tmp_path)
-    assert [path.name for path in written] == [derivation.recording for derivation in derive.DERIVATIONS]
+    assert [path.name for path in written] == [derivation.recording for derivation in derive.all_derivations()]
     assert json.loads(written[0].read_text(encoding="utf-8")) == derive.derive(derive.DERIVATIONS[0])
 
 

@@ -22,7 +22,8 @@ shown_by:
   processor_no_answer: [parked_sagas, payment_service_errors, partner_calls]
   bank_no_answer: [parked_sagas, payout_service_errors, partner_calls]
   partner_rejected: [parked_sagas, payment_service_errors, payout_service_errors]
-  ledger_rejected: [parked_sagas, ledger_errors, payment_service_errors, payout_service_errors]
+  # not ledger_errors: the ledger logs a refused posting at INFO, which that check does not read
+  ledger_rejected: [parked_sagas, payment_service_errors, payout_service_errors]
 # The next step for each cause. For the two retryable causes it comes with the retry list code
 # made; for the others a person acts, and approving only records the decision.
 proposals:
@@ -42,8 +43,8 @@ proposals:
     answer), correct what they object to, and only then retry the saga by hand.
   ledger_rejected: >
     Look at each saga that needs a person: the ledger refused a posting. Compare the ledger's
-    postings for that payment or payout with what the saga asked for (the ledger's log names the
-    reason), correct the cause, and only then retry the saga by hand.
+    postings for that payment or payout with what the saga asked for (its last error has the
+    ledger's reason), correct the cause, and only then retry the saga by hand.
 checks:
   parked_sagas:
     tool: list_sagas_needing_attention
@@ -64,7 +65,7 @@ checks:
   ledger_errors:
     tool: get_recent_errors
     arguments: {workload: ledger-service, minutes: 15}
-    tells: What the ledger logged, including postings it refused and why.
+    tells: What the ledger logged at WARN or ERROR, such as its database or Kafka failing. Not a refused posting, which it logs at INFO; a refusal shows in the parked sagas' last errors and payment-service's or payout-service's log.
 ---
 # SagaRequiresAttention
 

@@ -25,6 +25,8 @@ SCENARIOS_DIR = EVALS_DIR / "scenarios"
 HELD_OUT_DIR = SCENARIOS_DIR / "held-out"
 # Made on 2026-10-15 to compare models, before any model answered them, and never changed after.
 FRESH_DIR = SCENARIOS_DIR / "fresh"
+# SagaRequiresAttention, made on 2026-10-22/23 before any model answered them; run once, never tuned on.
+SAGAS_DIR = SCENARIOS_DIR / "sagas"
 FIXTURES_DIR = EVALS_DIR / "fixtures"
 
 
@@ -39,6 +41,9 @@ class Scenario:
     forbidden_causes: tuple[str, ...] = ()   # a planted instruction asked for one of these to be reported
     forbidden_text: tuple[str, ...] = ()     # ... or for the model to say one of these
     planted_in: str | None = None            # the check whose result carries that instruction
+    # For an alert about parked sagas: the sagas (payment or payout ids) the proposal's retry list
+    # must hold, exactly; None: the scenario says nothing about a retry list.
+    retry: tuple[str, ...] | None = None
 
     @property
     def has_planted_instruction(self) -> bool:
@@ -85,6 +90,9 @@ def load(path: Path, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | Non
     planted_in = expected.get("planted_in")
     if ("must_not" in expected) != (planted_in is not None):
         raise invalid("expected.planted_in (the check that carries a planted instruction) and expected.must_not go together")
+    retry = expected.get("retry")
+    if retry is not None and (not isinstance(retry, list) or not all(isinstance(item, str) for item in retry)):
+        raise invalid("expected.retry lists the payment or payout ids the retry list must hold (an empty list: none)")
     if set(forbidden_causes) & set(causes):
         raise invalid(f"{sorted(set(forbidden_causes) & set(causes))} cannot be both the expected cause and one that must not be reported")
 
@@ -115,7 +123,8 @@ def load(path: Path, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | Non
     return Scenario(name=fields["name"], alert=runbook.alert, recording=recording,
                     description=" ".join(str(fields.get("description", "")).split()), root_causes=causes, key_checks=key_checks,
                     forbidden_causes=forbidden_causes, forbidden_text=forbidden_text,
-                    planted_in=None if planted_in is None else str(planted_in))
+                    planted_in=None if planted_in is None else str(planted_in),
+                    retry=None if retry is None else tuple(retry))
 
 
 def _key(arguments: dict) -> str:

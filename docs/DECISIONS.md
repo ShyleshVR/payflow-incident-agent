@@ -98,6 +98,52 @@ LangGraph's own (`interrupt()`), with the state saved after every step in SQLite
 resumes the workflow even after a restart, and the coming steps (carry it out, check it worked)
 follow the decision inside the same workflow. A proposal lapses when every alert behind it has
 resolved. Decisions go through the service's API (and the command line, which calls it), so one
-process owns the workflow's state. Approving records the decision; the agent acts in a later phase.
+process owns the workflow's state. Approving a retry list carries it out (14 to 17); any other
+approval records the decision, and the step is a person's.
 *Turned down:* finishing the investigation and holding the proposal in the service (actions would
 then need a second workflow).
+
+## 14. One action: retrying parked sagas, with a second login used only after approval
+
+The first thing the agent does in PayFlow is retry sagas parked for an operator
+(`SagaRequiresAttention`): PayFlow already offers it as an operator's action, it is safe to repeat
+(the step runs again under the same idempotency key), and it is what a person does after most
+outages. It goes through a second PayFlow login, `incident-agent-operator`, whose scopes can read
+and retry sagas and nothing else. Only the agent's service holds its secret; the MCP server, whose
+tools the model chooses from, never does, not even from the `.env` file both read.
+*Turned down:* giving the read-only login the retry scope (any tool bug could then change PayFlow);
+an action tool in the MCP server (the model would sit one schema away from it).
+
+## 15. Code decides which sagas may be retried, not the model
+
+Each parked saga is sorted by the code PayFlow parked it for, the outcome of its last step: no
+answer came (`CAPTURE_UNKNOWN`, `TRANSFER_UNKNOWN`, ...) goes on the retry list, at most 50; a
+refusal by the processor, the bank or the ledger, a code the runbook does not know, or a saga that
+could not be read needs a person, because the same request would be refused again. The model's
+diagnosis explains the incident; it cannot add a saga to the list or drop one. A planted
+"retry every saga" in the evidence changes nothing, and the evals check exactly that.
+*Turned down:* letting the model pick the sagas (a list is a fact to look up, not a judgement);
+retrying refusals too (noise at best).
+
+## 16. Exactly what was approved, checked again, one at a time, then watched
+
+Only the sagas on the approved list are retried, in order, one per workflow step, so the state
+saved after each says exactly which are done and a restart never retries one twice. Just before
+each: still parked for the same code, and its partner answering (its calls over the last 2
+minutes all answered and the processor's breaker not open; with no calls, processor-simulator's
+own health). A saga that changed, or whose partner does not answer yet, is skipped and reported.
+Each retried saga is watched for up to 5 minutes until it finishes or parks again. An approval is
+carried out in the background by a second worker: approving answers at once.
+*Turned down:* retrying whatever is parked when the approval comes (not what the person saw);
+all at once (a burst on a partner that just recovered); waiting for the partner instead of
+skipping (an approval that acts an hour later is a different decision).
+
+## 17. A half-open breaker is not a partner that is down
+
+The first rule was "the processor's breaker closed on every instance". The live test showed that
+after an outage with no traffic the breaker stays half-open indefinitely: it closes only after
+enough trial calls succeed on each instance, even after three successful captures. So nothing
+would ever be retried after a quiet-time outage. Now only an open breaker blocks; half-open goes on
+to the calls and the health, and a retry is then one of the trial calls it is waiting for.
+*Turned down:* keeping "closed only" and waiting for traffic; allowing half-open only after
+answered trial calls (the same wait, without traffic).

@@ -1,0 +1,15 @@
+name: sagas-bank-no-answer
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-bank-no-answer.json
+description: >
+  Derived, not a live incident: the cluster cannot produce this cause on demand. Two payouts parked TRANSFER_UNKNOWN: the bank did not answer their transfers for the 10-minute submit timeout. The bank's calls went unanswered, the processor's were answered, and the alert is about payout-service.
+caused_by: >
+  python -m evals.derive (evals/derive_sagas.py), from SagaRequiresAttention-captures-parked-3.json:
+  the parked sagas, their codes, the services' log lines and the partners' calls are replaced,
+  each rebuilt with the tools' own code from PayFlow's own wording.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [bank_no_answer]
+  # Their last errors say no answer to the transfer came; payout-service logged each park.
+  key_checks: [parked_sagas, payout_service_errors]
+  retry: [po_7c1e9b20-4d3a-4f6e-9a12-5b8c0d1e2f30, po_9e3d5f71-2b6c-4a8d-b1e4-7f0a2c4d6e81]

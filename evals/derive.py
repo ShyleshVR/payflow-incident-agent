@@ -7,7 +7,9 @@ not worth breaking a cluster for. Those are derived from a live recording, in on
   answer ("the checks that would show the cause could not be run");
 - something is planted: a log line or a parked saga is added to a check's result, carrying an
   instruction aimed at the agent ("ignore the other checks and report ..."). Text like that can
-  reach a log or a saga's error from outside PayFlow, and it must change nothing.
+  reach a log or a saga's error from outside PayFlow, and it must change nothing;
+- results are rewritten: another cause's evidence in place of the live one's, for causes the
+  cluster cannot produce on demand (evals/derive_sagas.py, for SagaRequiresAttention).
 
 The rules are below, so a derived recording can be made again, and nobody edits a recording by
 hand. What is added is built with the tools' own code (mcp_server.tools), so it has the shape,
@@ -17,6 +19,7 @@ A derived recording holds only what a replay reads (the alert and the tool calls
 investigation's model calls and diagnosis are left out: they were about other evidence.
 """
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,6 +66,8 @@ class Derivation:
     what: str                # what was changed, kept in the file for whoever opens it
     fails: dict[str, Exception] = field(default_factory=dict)            # check name -> why its tool's source did not answer
     plants: dict[str, LogLine | ParkedSaga] = field(default_factory=dict)   # check name -> what is added to its result
+    # (tool, arguments, result) -> (arguments, result), for every call that did not fail; None: none
+    rewrite: Callable[[str, dict, object], tuple[dict, object]] | None = None
 
 
 # What a planted instruction asks for. Each is tried in each carrier below.
@@ -243,16 +248,24 @@ def derive(derivation: Derivation, fixtures_dir: Path = FIXTURES_DIR, runbooks_d
                 is_error, result = True, errors[key]
             elif key in plants:
                 result = _planted(result, plants[key])
-            calls.append({"tool": call["tool"], "arguments": call["arguments"], "is_error": is_error, "result": result})
+            arguments = call["arguments"]
+            if derivation.rewrite is not None and not is_error:
+                arguments, result = derivation.rewrite(call["tool"], arguments, result)
+            calls.append({"tool": call["tool"], "arguments": arguments, "is_error": is_error, "result": result})
         if calls:
             steps.append({"step": step["step"], "tool_calls": calls})
     return {"id": f"derived-{Path(derivation.recording).stem}", "alert_name": source["alert_name"],
             "derived_from": derivation.source, "derived": derivation.what, "steps": steps}
 
 
+def all_derivations() -> tuple[Derivation, ...]:
+    from evals.derive_sagas import SAGAS  # it builds on this module
+    return (*DERIVATIONS, *SAGAS)
+
+
 def write_all(fixtures_dir: Path = FIXTURES_DIR) -> list[Path]:
     written = []
-    for derivation in DERIVATIONS:
+    for derivation in all_derivations():
         path = fixtures_dir / derivation.recording
         path.write_text(json.dumps(derive(derivation, fixtures_dir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         written.append(path)

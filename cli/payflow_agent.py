@@ -58,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="the held-out scenarios (evals/scenarios/held-out), never used for tuning, instead of the others")
     evaluate.add_argument("--fresh", action="store_true",
                           help="the fresh scenarios (evals/scenarios/fresh), made to compare models, instead of the others")
+    evaluate.add_argument("--sagas", action="store_true",
+                          help="the SagaRequiresAttention scenarios (evals/scenarios/sagas), instead of the others")
     commands.add_parser("pending", help="investigations whose proposal waits for your decision (asks the service)")
     approve = commands.add_parser("approve", help="approve the proposal of an investigation (asks the service)")
     approve.add_argument("id", type=int, help="the service's investigation id (see: payflow-agent pending)")
@@ -71,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     if arguments.command == "eval":
-        which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else None
+        which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else "sagas" if arguments.sagas else None
         return _eval(arguments.label if arguments.label != "eval" or not which else which, arguments.scenario, which)
     if arguments.command == "serve":
         return _serve(arguments.host, arguments.port)
@@ -117,7 +119,8 @@ def _investigate(arguments) -> int:
 def _eval(label: str, only: list[str] | None, which: str | None = None) -> int:
     """Exit code 0 when every scenario passed, 1 when some did not, 2 when the eval could not run."""
     try:
-        folder = {"held-out": scenario.HELD_OUT_DIR, "fresh": scenario.FRESH_DIR}.get(which, scenario.SCENARIOS_DIR)
+        folder = {"held-out": scenario.HELD_OUT_DIR, "fresh": scenario.FRESH_DIR, "sagas": scenario.SAGAS_DIR}.get(
+            which, scenario.SCENARIOS_DIR)
         scenarios = scenario.load_all(folder)
         if only:
             unknown = sorted(set(only) - {item.name for item in scenarios})

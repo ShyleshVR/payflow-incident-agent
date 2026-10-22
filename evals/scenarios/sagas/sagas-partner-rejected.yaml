@@ -1,0 +1,15 @@
+name: sagas-partner-rejected
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-partner-rejected.json
+description: >
+  Derived, not a live incident: the cluster cannot produce this cause on demand. Three captures parked CAPTURE_REJECTED: the processor answered each with a refusal (422 invalid_amount). Retrying the same capture would be refused again, so nothing is retried.
+caused_by: >
+  python -m evals.derive (evals/derive_sagas.py), from SagaRequiresAttention-captures-parked-3.json:
+  the parked sagas, their codes, the services' log lines and the partners' calls are replaced,
+  each rebuilt with the tools' own code from PayFlow's own wording.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [partner_rejected]
+  # Their last errors carry the processor's refusal; payment-service logged each park.
+  key_checks: [parked_sagas, payment_service_errors]
+  retry: []

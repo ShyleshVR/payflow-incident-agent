@@ -1,0 +1,16 @@
+name: sagas-ledger-rejected
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-ledger-rejected.json
+description: >
+  Derived, not a live incident: the cluster cannot produce this cause on demand. Two refunds parked FINALIZE_REJECTED: the ledger refused their postings (NO_ACTIVE_HOLD). The ledger logs that at INFO, so its log shows nothing. Beside them one older capture parked CAPTURE_UNKNOWN: the only saga to retry.
+caused_by: >
+  python -m evals.derive (evals/derive_sagas.py), from SagaRequiresAttention-captures-parked-3.json:
+  the parked sagas, their codes, the services' log lines and the partners' calls are replaced,
+  each rebuilt with the tools' own code from PayFlow's own wording.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [ledger_rejected]
+  # Their last errors carry the ledger's reason; payment-service logged each park. The ledger's own log
+  # shows nothing (it logs refusals at INFO).
+  key_checks: [parked_sagas, payment_service_errors]
+  retry: [pay_e4b2d6f8-0c1a-4e3b-9d5f-7a9c1e3b5d70]

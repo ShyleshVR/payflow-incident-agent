@@ -15,8 +15,9 @@ Alertmanager on their usual local ports.
 | `processor-crash-loop.sh start` | The processor's pods crash as they start | `processor_not_running` |
 | `processor-database-access-lost.sh start` | The processor's database login is locked | `processor_dependency_down` |
 | `processor-unreachable.sh start` | payment-service is given a wrong address for the processor | `processor_unreachable` |
+| `captures-parked.sh start` | Three manual captures requested during an 11-minute outage; they park `CAPTURE_UNKNOWN` about 10 minutes later (`SagaRequiresAttention`, no traffic needed) | `processor_no_answer` |
 
-Every script takes `stop`, which undoes it. `traffic.sh` and `wait-for-alert.sh` are helpers.
+Every script takes `stop`, which undoes it (`captures-parked.sh stop` retries the three by hand). `traffic.sh` and `wait-for-alert.sh` are helpers.
 
 ## Recording a scenario
 

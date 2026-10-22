@@ -1,0 +1,263 @@
+{
+  "id": "derived-SagaRequiresAttention-bank-no-answer",
+  "alert_name": "SagaRequiresAttention",
+  "derived_from": "SagaRequiresAttention-captures-parked-3.json",
+  "derived": "Two payouts parked TRANSFER_UNKNOWN: the bank (processor-simulator) did not answer their transfers for the 10-minute submit timeout, during an outage. The bank's calls went unanswered, the processor's were fine, payout-service logged each park, and the alert is about payout-service.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 2,
+            "alerts": [
+              {
+                "alert": "SagaRequiresAttention",
+                "severity": "critical",
+                "about": {
+                  "application": "payout-service"
+                },
+                "firing_for_minutes": 0,
+                "summary": "2 saga(s) parked for an operator"
+              },
+              {
+                "alert": "PayoutsFailing",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 47,
+                "summary": "4.013051917612322 payouts failed or were returned in the last hour"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_dependency_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "processor": {
+              "called_by": "payment-service",
+              "calls": 78,
+              "succeeded": 78,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 0,
+              "unanswered_percent": 0.0,
+              "avg_ms": 50,
+              "operations": [
+                {
+                  "operation": "authorize",
+                  "calls": 40,
+                  "succeeded": 40,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 50
+                },
+                {
+                  "operation": "capture",
+                  "calls": 38,
+                  "succeeded": 38,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 0,
+                  "avg_ms": 50
+                }
+              ]
+            },
+            "processor_circuit_breaker": {
+              "state": "closed",
+              "instances": 2,
+              "instances_not_closed": 0,
+              "opened_in_window": false,
+              "calls_refused": 0,
+              "recent_failure_percent": null
+            },
+            "bank": {
+              "called_by": "payout-service",
+              "calls": 46,
+              "succeeded": 0,
+              "declined": 0,
+              "rejected": 0,
+              "unanswered": 46,
+              "unanswered_percent": 100.0,
+              "avg_ms": 2000,
+              "operations": [
+                {
+                  "operation": "transfer",
+                  "calls": 46,
+                  "succeeded": 0,
+                  "declined": 0,
+                  "rejected": 0,
+                  "unanswered": 46,
+                  "avg_ms": 2000
+                }
+              ]
+            },
+            "concerns": [
+              "46 of 46 calls to the bank (100%) got no answer to trust in the last 15 minutes (transfer 46)"
+            ]
+          }
+        },
+        {
+          "tool": "list_sagas_needing_attention",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "stuck_after_minutes": 15,
+            "payments_parked": 0,
+            "payments_stuck": 0,
+            "payouts_parked": 2,
+            "payouts_stuck": 0,
+            "sagas": [
+              {
+                "id": "po_9e3d5f71-2b6c-4a8d-b1e4-7f0a2c4d6e81",
+                "kind": "payout",
+                "reason": "parked",
+                "stopped_in": "SUBMITTING",
+                "minutes": 12,
+                "attempts": 3,
+                "failure_code": null,
+                "last_error": "No answer to the transfer within PT10M; it may have been sent, so the hold is kept. Last: UNKNOWN 503 processor_unavailable: Processor outage (simulated)"
+              },
+              {
+                "id": "po_7c1e9b20-4d3a-4f6e-9a12-5b8c0d1e2f30",
+                "kind": "payout",
+                "reason": "parked",
+                "stopped_in": "SUBMITTING",
+                "minutes": 11,
+                "attempts": 3,
+                "failure_code": null,
+                "last_error": "No answer to the transfer within PT10M; it may have been sent, so the hold is kept. Last: UNKNOWN 503 processor_unavailable: Processor outage (simulated)"
+              }
+            ],
+            "not_listed": 0,
+            "concerns": [
+              "2 payout saga(s) are parked and wait for an operator's retry; the oldest, po_9e3d5f71-2b6c-4a8d-b1e4-7f0a2c4d6e81, for 12 minutes in SUBMITTING"
+            ]
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "ledger-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payout-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payout-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 2,
+            "warning_lines": 0,
+            "groups": [
+              {
+                "level": "ERROR",
+                "logger": "c.s.p.saga.PayoutOrchestrator",
+                "message": "Payout saga needs attention. sagaId=b1a2c3d4-0001-4e5f-8a9b-1c2d3e4f5a60, payoutId=7c1e9b20-4d3a-4f6e-9a12-5b8c0d1e2f30, state=SUBMITTING, reason=No answer to the transfer within PT10M; it may have been sent, so the hold is kept. Last: UNKNOWN 503 processor_unavailable: Processor outage (simulated)",
+                "cause": null,
+                "count": 2,
+                "pods": 2,
+                "last_seen_minutes_ago": 1,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": [
+              "2 ERROR line(s) of 1 kind(s) in the last 15 minutes"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "sort_sagas",
+      "tool_calls": [
+        {
+          "tool": "list_parked_sagas",
+          "arguments": {
+            "service": "payout-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "payout-service",
+            "parked": 2,
+            "sagas": [
+              {
+                "id": "po_9e3d5f71-2b6c-4a8d-b1e4-7f0a2c4d6e81",
+                "kind": "payout",
+                "stopped_in": "SUBMITTING",
+                "parked_for": "TRANSFER_UNKNOWN",
+                "minutes": 12,
+                "last_error": "No answer to the transfer within PT10M; it may have been sent, so the hold is kept. Last: UNKNOWN 503 processor_unavailable: Processor outage (simulated)"
+              },
+              {
+                "id": "po_7c1e9b20-4d3a-4f6e-9a12-5b8c0d1e2f30",
+                "kind": "payout",
+                "stopped_in": "SUBMITTING",
+                "parked_for": "TRANSFER_UNKNOWN",
+                "minutes": 11,
+                "last_error": "No answer to the transfer within PT10M; it may have been sent, so the hold is kept. Last: UNKNOWN 503 processor_unavailable: Processor outage (simulated)"
+              }
+            ],
+            "not_listed": 0
+          }
+        }
+      ]
+    }
+  ]
+}

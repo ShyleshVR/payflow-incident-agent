@@ -5,8 +5,8 @@
 | Piece | Runs | What it does |
 |---|---|---|
 | **Model server** | llama.cpp's `llama-server`, Vulkan, on this machine's GPU (`scripts/start-llm.ps1`) | Answers the agent's questions. OpenAI-compatible API on `127.0.0.1:8090`. gpt-oss-20b by default |
-| **MCP server** | `python -m mcp_server.server`, `127.0.0.1:8091` | The agent's only view of PayFlow: nine read-only tools |
-| **Agent service** | `payflow-agent serve`, `127.0.0.1:8092` | Takes Alertmanager's alerts, queues investigations, waits for decisions |
+| **MCP server** | `python -m mcp_server.server`, `127.0.0.1:8091` | The agent's view of PayFlow: ten read-only tools |
+| **Agent service** | `payflow-agent serve`, `127.0.0.1:8092` | Takes Alertmanager's alerts, queues investigations, waits for decisions, carries out approved saga retries |
 | **Workflow** | in the service (or `payflow-agent investigate`) | One investigation: a LangGraph graph whose steps are mostly code, with the model making two kinds of choices |
 | **PayFlow** | Docker Desktop's Kubernetes | Sends every alert to the agent (the `local-agent` overlay), and answers its checks |
 
@@ -29,9 +29,12 @@ metrics badly.
 | `get_dependency_status(minutes)` | Prometheus | calls to the card processor and the bank, the circuit breaker |
 | `get_messaging_status(minutes)` | Prometheus | Kafka consumer lag, outboxes, dead letters |
 | `list_sagas_needing_attention`, `get_saga(id)` | PayFlow's API | stuck and parked payments and payouts |
+| `list_parked_sagas(service)` | PayFlow's API | every parked saga of one service (up to 50), each with the code it parked for. For the agent's code, not a runbook check |
 | `get_reconciliation(date)` | PayFlow's API | the daily reconciliation's runs and discrepancies |
 
 PayFlow's API is reached as the service client `incident-agent`, whose scopes can only read.
+The MCP server never holds the agent's other login (see "Carrying out an approval"): it skips
+that secret in the `.env` file both share, and drops it if it inherits it.
 A source that does not answer becomes the tool's error ("Prometheus did not answer ... This fact
 is unavailable; it says nothing about PayFlow itself"), never an exception the model cannot see.
 
@@ -49,12 +52,20 @@ the model reads.
 - **requires_clear**: checks that must have run and found nothing for a cause to stand.
   "The processor cannot be reached" means something only while the processor itself looks fine.
 - **proposals**: for each cause, the next step proposed to a person.
+- **parking_codes** and **retryable** (only in `SagaRequiresAttention.md`): which codes PayFlow
+  parks a saga for mean which cause (`CAPTURE_UNKNOWN` is `processor_no_answer`), and which causes
+  the agent may retry: only the two where no answer came, so a retry asks again under the same
+  idempotency key. A refusal by a partner or the ledger needs a person.
 - The guidance ends with **"What resolves it"**, which the report quotes.
+
+Two runbooks exist: `ProcessorCircuitOpen` (the processor cannot be reached or fails) and
+`SagaRequiresAttention` (payments or payouts parked for an operator).
 
 ## An investigation
 
 ```
-intake → load_runbook → choose_checks ⇄ gather → record_unchosen → diagnose → screen → propose → report → decide
+intake → load_runbook → choose_checks ⇄ gather → record_unchosen → diagnose → screen → sort_sagas → propose → report → decide
+                                                                                 (an approved retry list) → retry ⇄ retry → watch
 ```
 
 | Step | Who | What |
@@ -66,9 +77,12 @@ intake → load_runbook → choose_checks ⇄ gather → record_unchosen → dia
 | `record_unchosen` | code | Runs the checks the model did not choose, for the trace only, so a replay with another model can choose them |
 | `diagnose` | **model** | The cause, a confidence, quotes from the checks, a summary. Code then checks every quote against what the checks really returned, and the runbook's `shown_by` and `requires_clear`; a failure is explained to the model and it answers once more. A cause still not backed is reported as `unknown` |
 | `screen` | **model** | One narrow question about only the text outside parties wrote (log lines, error causes, a saga's last error): does any of it speak to an agent or an operator? What it quotes is shown in the report as "found in the evidence, and not followed" |
-| `propose` | code | The runbook's proposal for the cause found (none for `unknown`) |
+| `sort_sagas` | code | Only for a runbook with parking codes: reads every parked saga of the services the alert is about and sorts each by the code it parked for: the retry list (no answer came; at most 50) and those that need a person |
+| `propose` | code | The runbook's proposal for the cause found (none for `unknown`), with the retry list when there is one. The model's diagnosis cannot add a saga to the list or drop one |
 | `report` | code | The result, written as the report |
 | `decide` | person | In the service only: the workflow pauses until a decision |
+| `retry` | code | After an approved retry list, one saga per step: checked again, then retried with the operator login (see below) |
+| `watch` | code | Each retried saga, every 10 seconds for up to 5 minutes, until it finishes or parks again |
 
 The model never sees an instruction it could follow from the evidence: the prompt marks the
 evidence as data written partly by outside parties, the answer's shape allows only the runbook's
@@ -83,7 +97,8 @@ tools answer from the recording, the model is asked afresh. The evals are built 
 
 ## The service
 
-`payflow-agent serve` is a FastAPI application with one worker.
+`payflow-agent serve` is a FastAPI application with two workers: one runs investigations, the
+other carries out approvals.
 
 - **Alerts in.** Alertmanager posts each group of alerts to `POST /alerts`. Each new firing (an
   alert instance and when it started) starts one investigation; a firing of an alert whose
@@ -94,7 +109,8 @@ tools answer from the recording, the model is asked afresh. The evals are built 
   model server or the MCP server does not answer, the investigation goes back in the queue and is
   tried again 30 seconds later; any other failure ends it as `failed`, with the error kept.
 - **Records.** `runs/agent.sqlite`: investigations and their firings. An investigation running
-  when the service stopped is queued again when it starts.
+  when the service stopped is queued again when it starts, and an approval it was carrying out
+  is carried on.
 - **Security.** Every request needs `Authorization: Bearer <AGENT_TOKEN>`. Alertmanager sends the
   same token, from a Kubernetes secret mounted into it.
 
@@ -115,9 +131,43 @@ was approved from the command line after the service had been restarted while it
 crash-looping processor (`processor_not_running`) whose proposal was rejected; and a two-minute
 outage left undecided, which lapsed four seconds after its alarm resolved.
 
-Approving only records the decision for now. Actions behind the approval (retrying a parked
-payment, rerunning a reconciliation) are the next phase; the workflow already ends where they
-will go.
+A rejection or a lapse is recorded at once. An approval is answered at once too: the
+investigation becomes `carrying_out`, and the second worker resumes the workflow. For a proposal
+without a retry list (every `ProcessorCircuitOpen` proposal), approving only records the
+decision: the step is for a person to take.
+
+### Carrying out an approval
+
+The one action the agent takes is retrying parked sagas, and only those on a retry list a person
+approved. It has a second PayFlow login for it, `incident-agent-operator` (scopes
+`payments:operate` and `payouts:operate`: it can read and retry sagas, and nothing else). Only
+the service holds its secret, and only `agent/operator.py` uses it.
+
+The sagas are taken one at a time, one workflow step each. Just before each one, code checks
+again (`agent/carry_out.py`):
+
+- **The saga**, read with the operator login: still parked, for the same code as when proposed.
+- **Its partner answers now.** The processor's or bank's calls over the last 2 minutes were all
+  answered, and the processor's circuit breaker is not open. If nobody called the partner,
+  processor-simulator's own health decides (its pods ready, no 5xx). A half-open breaker does not
+  stop a retry: without traffic it stays half-open after an outage indefinitely (seen live), and a
+  retry is then one of its trial calls.
+
+A saga that fails either check is skipped, with the reason; the others go on. A retried one
+resumes the step it parked in under the same idempotency key, so nothing is charged, refunded or
+paid out twice. Then each retried saga is watched until it finishes or parks again, for up to 5
+minutes. The report's "What was carried out" says, per saga: retried and how it ended, skipped
+and why, refused by PayFlow (it answers 409 to a saga that is not parked), or not carried out
+(PayFlow did not answer).
+
+The state is saved after every step, so a restart in the middle goes on with the next saga and
+never retries one twice; the decision is not taken again.
+
+Seen live on 2026-10-22, three times: an approval given at once, while the processor's breaker
+was still half-open with unanswered calls (all three sagas skipped); an approval once the
+processor answered, with the service stopped five seconds later and started again (it carried on
+by itself; all three retried and completed within a second; the alert resolved); and a rejection
+(nothing retried, the alert kept firing).
 
 ## PayFlow's side
 
@@ -142,6 +192,6 @@ the first two alike, as "ConnectException: null"; the difference is in the deepe
 | `runs/agent.sqlite` | the service's investigations, firings, decisions |
 | `runs/checkpoints.sqlite` | paused workflows |
 | `runs/evals/` | the traces of eval replays |
-| `.env` | `PAYFLOW_CLIENT_SECRET`, `AGENT_TOKEN` |
+| `.env` | `PAYFLOW_CLIENT_SECRET`, `PAYFLOW_OPERATOR_CLIENT_SECRET` (never loaded by the MCP server), `AGENT_TOKEN` |
 
 All of these are git-ignored. `evals/results/` (the scores) is kept in git.

@@ -1,0 +1,15 @@
+name: sagas-captures-parked-1
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-captures-parked-1.json
+description: >
+  Three manual captures parked CAPTURE_UNKNOWN: they were requested during an 11-minute simulated
+  processor outage, got no answer for the capture step's 10-minute timeout, and parked. Investigated about 40 seconds after the outage ended: the processor's breaker still half-open.
+caused_by: >
+  The scratchpad script park_manual.sh of phase 5 step 4 (three MANUAL-capture payments, the
+  outage, then the captures). Recorded live by the agent's service at 2026-10-22 17:45 UTC.
+cleaned_up_by: The sagas were retried (by the agent or by hand) once the processor answered.
+expected:
+  root_causes: [processor_no_answer]
+  # Each parked saga's last error says no capture answer came; payment-service logged each park.
+  key_checks: [parked_sagas, payment_service_errors]
+  retry: [pay_483c87b2-4682-4be6-8916-72f24b660066, pay_62964d2c-179d-4e68-b220-4f80b17ab70e, pay_a3d10568-57ff-47f6-bd82-11b493978a7b]

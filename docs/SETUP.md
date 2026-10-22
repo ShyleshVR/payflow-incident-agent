@@ -100,9 +100,10 @@ python -m venv .venv
 .venv\Scripts\python scripts\write_env.py      # PayFlow's secrets for the agent, into .env
 ```
 
-`write_env.py` copies two values from PayFlow's local secrets into `.env` (git-ignored) without
-printing them: the agent's client secret for PayFlow's API (it can only read), and the token
-PayFlow's alerts carry. Run it again whenever PayFlow's secrets are regenerated. (PayFlow
+`write_env.py` copies three values from PayFlow's local secrets into `.env` (git-ignored) without
+printing them: the agent's client secret for PayFlow's API (it can only read), the secret of its
+second login (it can only retry parked sagas; the service uses it after an approval, the MCP
+server never loads it), and the token PayFlow's alerts carry. Run it again whenever PayFlow's secrets are regenerated. (PayFlow
 somewhere else: `write_env.py <path to PayFlow>`.)
 
 **Check:**
@@ -110,7 +111,7 @@ somewhere else: `write_env.py <path to PayFlow>`.)
 ```powershell
 .venv\Scripts\python -m pytest -q                       # all pass; no GPU or cluster needed
 Select-String -Path .env -Pattern '^[A-Z_]+=' | ForEach-Object { ($_.Line -split '=')[0] }
-# PAYFLOW_CLIENT_SECRET and AGENT_TOKEN
+# PAYFLOW_CLIENT_SECRET, PAYFLOW_OPERATOR_CLIENT_SECRET and AGENT_TOKEN
 ```
 
 Commands below are written as `payflow-agent`; that is `.venv\Scripts\payflow-agent.exe` (or run
@@ -180,9 +181,29 @@ payflow-agent approve 1 --note "processor team contacted"
 # or: payflow-agent reject 1 --reason "..."
 ```
 
-Approving records the decision in the trace and the report; the agent does not act yet. Leave
-it undecided instead, and it lapses when the alert resolves, about a minute after the outage
-ends. The outage ends by itself; to end it early: `evals/faults/processor-outage.sh stop`.
+Approving this proposal records the decision in the trace and the report: the step (contacting
+the processor) is yours to take. Leave it undecided instead, and it lapses when the alert
+resolves, about a minute after the outage ends. The outage ends by itself; to end it early:
+`evals/faults/processor-outage.sh stop`.
+
+**The one thing the agent does itself: retrying parked payments.** Park three captures, then let
+the agent retry them:
+
+```bash
+evals/faults/captures-parked.sh start              # they park about 10 minutes later
+evals/faults/wait-for-alert.sh SagaRequiresAttention
+```
+
+```powershell
+payflow-agent pending                              # SagaRequiresAttention: processor_no_answer, with the 3 to retry
+payflow-agent approve 2 --note "processor is back"
+payflow-agent show latest                          # "What was carried out": each saga, retried and how it ended
+```
+
+Approve about 5 minutes after the outage ends (about 16 minutes after `start`). Approved earlier,
+the agent's check just before each retry finds the processor not answering yet and skips them
+all, and says so. Rejected, they stay parked. Afterwards, `evals/faults/captures-parked.sh stop`
+retries any still parked.
 
 Other faults: `processor-not-running.sh`, `processor-crash-loop.sh`,
 `processor-database-access-lost.sh`, `processor-unreachable.sh`, each with `start` and `stop`.
@@ -230,7 +251,9 @@ included (the secrets are kept).
 | Alertmanager's log: "401" for the incident-agent receiver | The agent's `.env` token differs from PayFlow's (secrets regenerated) | `.venv\Scripts\python scripts\write_env.py`, then restart the service |
 | Alertmanager's log: "permission denied" reading `/etc/alertmanager/agent/token` | An older PayFlow branch without the pod's `fsGroup` | Update PayFlow to `feature/incident-agent-access` and redeploy |
 | An investigation ends `not_firing` | The alert cleared before its turn in the queue | Nothing to do |
-| `no_runbook` for an alert | Only `ProcessorCircuitOpen` has a runbook so far | Expected |
+| `no_runbook` for an alert | Only `ProcessorCircuitOpen` and `SagaRequiresAttention` have runbooks so far | Expected |
+| An approved retry list skips every saga: "the processor does not answer yet" | The processor's calls in the last 2 minutes went unanswered, or its breaker is open, or (with no calls) its health still shows recent 5xx | Wait a few minutes after the outage and run `evals/faults/captures-parked.sh stop`, or approve the next proposal |
+| Every saga of an approved list: "Not carried out: ... No operator secret" | `.env` has no `PAYFLOW_OPERATOR_CLIENT_SECRET` (PayFlow older than the operator login, or `write_env.py` not run since) | Update PayFlow, run its `generate-local-secrets.sh`, then `write_env.py`, and restart the service |
 | The same question gets different answers on different runs | `LLM_CACHE_PROMPT=on` | Leave it off (the default) when results must repeat |
 | A fault script fails with `kubectl` paths mangled (`C:/Program Files/Git/...`) | Git Bash rewrites paths | The scripts set `MSYS_NO_PATHCONV=1`; do the same in your own commands |
 
