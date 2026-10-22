@@ -21,6 +21,8 @@ SERVER_ERROR_PERCENT = 1.0
 # processor-simulator plays both partners in PayFlow's cluster: the card processor and the bank.
 PARTNER_WORKLOAD = "processor-simulator"
 PARTNER_OF = {"processor_no_answer": "processor", "bank_no_answer": "bank"}
+# Breaker states in which calls to the processor are refused without being sent.
+BREAKER_REFUSING = ("open", "forced_open")
 
 # What became of one saga of the list.
 RETRIED, SKIPPED, REFUSED, NOT_REACHED = "retried", "skipped", "refused", "not_reached"
@@ -28,21 +30,27 @@ RETRIED, SKIPPED, REFUSED, NOT_REACHED = "retried", "skipped", "refused", "not_r
 
 async def answering(partner: str, tools: Tools) -> tuple[bool, str]:
     """Whether the processor or the bank answers now, and what says so. Its calls of the last
-    CALLS_MINUTES decide: every call answered (and, for the processor, its breaker closed on every
+    CALLS_MINUTES decide: every call answered (and, for the processor, its breaker not open on any
     instance). Nobody called it: its own health decides (pods ready, up, no 5xx)."""
     status = await tools.call("get_dependency_status", {"minutes": CALLS_MINUTES})
     if status.is_error:
         return False, f"its calls could not be read: {status.data}"
     breaker = status.data.get("processor_circuit_breaker") if partner == "processor" else None
-    if breaker and breaker["state"] != "closed":
+    # Open: calls are refused unsent. Half-open is not "down": it lets trial calls through, and
+    # stays half-open until enough of them succeed on each instance, which without traffic can be
+    # indefinitely (seen live, 2026-10-22). So half-open goes on to the calls and the health below
+    # (the user's decision), and a retry is then one of those trial calls.
+    if breaker and breaker["state"] in BREAKER_REFUSING:
         return False, (f"the processor circuit breaker is {breaker['state']} on {breaker['instances_not_closed']} of "
                        f"{breaker['instances']} payment-service instance(s)")
+    half_open = ("; the processor circuit breaker is half-open, letting trial calls through"
+                 if breaker and breaker["state"] == "half_open" else "")
     calls = status.data[partner]
     if calls["calls"]:
         if calls["unanswered"]:
             return False, (f"{calls['unanswered']} of {calls['calls']} calls to the {partner} got no answer in the last "
                            f"{CALLS_MINUTES} minutes")
-        return True, f"all {calls['calls']} calls to the {partner} in the last {CALLS_MINUTES} minutes were answered"
+        return True, f"all {calls['calls']} calls to the {partner} in the last {CALLS_MINUTES} minutes were answered{half_open}"
 
     pods = await tools.call("get_pod_status", {"workload": PARTNER_WORKLOAD})
     health = await tools.call("get_service_health", {"service": PARTNER_WORKLOAD})
@@ -54,7 +62,7 @@ async def answering(partner: str, tools: Tools) -> tuple[bool, str]:
     if not health.data["instances_up"] or health.data["server_error_percent"] >= SERVER_ERROR_PERCENT:
         return False, (f"{nobody} {PARTNER_WORKLOAD} has {health.data['instances_up']} instance(s) up, answering "
                        f"{health.data['server_error_percent']:g}% of requests with a 5xx")
-    return True, f"{nobody} {PARTNER_WORKLOAD}'s pods are all ready and it answers without 5xx"
+    return True, f"{nobody} {PARTNER_WORKLOAD}'s pods are all ready and it answers without 5xx{half_open}"
 
 
 async def retry_one(row: dict, operator: Operator, tools: Tools) -> dict:

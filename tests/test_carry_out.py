@@ -99,8 +99,9 @@ def test_the_processor_answers_when_its_recent_calls_were_all_answered_and_its_b
 
 @pytest.mark.parametrize(("status", "why"), [
     (partners(breaker="open"), "the processor circuit breaker is open on 2 of 2"),
-    (partners(breaker="half_open"), "is half_open"),
+    (partners(breaker="forced_open"), "is forced_open"),
     (partners(processor_unanswered=1), "1 of 10 calls to the processor got no answer"),
+    (partners(breaker="half_open", processor_unanswered=2), "2 of 10 calls to the processor got no answer"),
     (ToolResult(True, "Prometheus did not answer"), "its calls could not be read: Prometheus did not answer"),
 ])
 def test_the_processor_does_not_answer_yet(status, why):
@@ -122,6 +123,19 @@ def test_with_nobody_calling_the_partner_its_own_health_decides():
         tools = ChangingTools(get_dependency_status=quiet, get_pod_status=pods, get_service_health=health)
         answers, why = asyncio.run(carry_out.answering("processor", tools))
         assert not answers and said in why
+
+
+def test_a_half_open_breaker_is_not_down_its_calls_or_health_decide():
+    """Seen live: with no traffic after an outage the breaker stays half-open, so 'closed only'
+    would never retry anything at a quiet time."""
+    answered = asyncio.run(carry_out.answering("processor", ChangingTools(get_dependency_status=partners(breaker="half_open"))))
+    assert answered == (True, ("all 10 calls to the processor in the last 2 minutes were answered; the processor circuit "
+                               "breaker is half-open, letting trial calls through"))
+
+    tools = ChangingTools(get_dependency_status=partners(processor_calls=0, breaker="half_open"), get_pod_status=PODS_READY,
+                          get_service_health=HEALTHY)
+    answers, why = asyncio.run(carry_out.answering("processor", tools))
+    assert answers and "nobody called the processor" in why and why.endswith("letting trial calls through")
 
 
 def test_the_bank_is_judged_by_its_own_calls_not_the_processors_breaker():
