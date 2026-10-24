@@ -52,17 +52,23 @@ async def answering(partner: str, tools: Tools) -> tuple[bool, str]:
                            f"{CALLS_MINUTES} minutes")
         return True, f"all {calls['calls']} calls to the {partner} in the last {CALLS_MINUTES} minutes were answered{half_open}"
 
-    pods = await tools.call("get_pod_status", {"workload": PARTNER_WORKLOAD})
-    health = await tools.call("get_service_health", {"service": PARTNER_WORKLOAD})
-    nobody = f"nobody called the {partner} in the last {CALLS_MINUTES} minutes, and"
+    ok, why = await healthy(PARTNER_WORKLOAD, tools)
+    return ok, f"nobody called the {partner} in the last {CALLS_MINUTES} minutes, and {why}{half_open if ok else ''}"
+
+
+async def healthy(workload: str, tools: Tools) -> tuple[bool, str]:
+    """Whether a workload is healthy now by its own pods and health: every pod it wants ready, an
+    instance up, and under SERVER_ERROR_PERCENT of its requests answered with a 5xx."""
+    pods = await tools.call("get_pod_status", {"workload": workload})
+    health = await tools.call("get_service_health", {"service": workload})
     if pods.is_error or health.is_error:
-        return False, f"{nobody} its health could not be read: {pods.data if pods.is_error else health.data}"
+        return False, f"its health could not be read: {pods.data if pods.is_error else health.data}"
     if not pods.data["pods_wanted"] or pods.data["pods_ready"] < pods.data["pods_wanted"]:
-        return False, f"{nobody} {PARTNER_WORKLOAD} has {pods.data['pods_ready']} of {pods.data['pods_wanted']} pods ready"
+        return False, f"{workload} has {pods.data['pods_ready']} of {pods.data['pods_wanted']} pods ready"
     if not health.data["instances_up"] or health.data["server_error_percent"] >= SERVER_ERROR_PERCENT:
-        return False, (f"{nobody} {PARTNER_WORKLOAD} has {health.data['instances_up']} instance(s) up, answering "
+        return False, (f"{workload} has {health.data['instances_up']} instance(s) up, answering "
                        f"{health.data['server_error_percent']:g}% of requests with a 5xx")
-    return True, f"{nobody} {PARTNER_WORKLOAD}'s pods are all ready and it answers without 5xx{half_open}"
+    return True, f"{workload}'s pods are all ready and it answers without 5xx"
 
 
 async def retry_one(row: dict, operator: Operator, tools: Tools) -> dict:
@@ -95,6 +101,62 @@ async def retry_one(row: dict, operator: Operator, tools: Tools) -> dict:
     except OperatorUnavailable as e:
         return done | {"outcome": NOT_REACHED, "why": str(e)}
     return done | {"outcome": RETRIED, "why": None}
+
+
+# ---- failed reconciliation days (ReconciliationRunFailed)
+
+# The workload each rerunnable cause needs healthy again before its day is run again.
+SOURCE_OF = {"processor_unavailable": "processor-simulator", "ledger_unavailable": "ledger-service",
+             "payments_unavailable": "payment-service", "payouts_unavailable": "payout-service",
+             "auth_unavailable": "merchant-service", "run_abandoned": "reconciliation-service"}
+RUN_WATCH_SECONDS = 600
+RUN_WATCH_EVERY_SECONDS = 15
+RERUN = "rerun"
+
+
+async def rerun_one(row: dict, operator: Operator, tools: Tools) -> dict:
+    """Checks one failed day again and, if it still qualifies, runs its reconciliation again: still
+    not reconciled, no run of it going, and the source that failed healthy now. Returns what
+    happened: {"id" (the date), "cause", "outcome", "why", "source", "run" (as PayFlow finished it, or
+    None while it is still going)}."""
+    done = {"id": row["id"], "cause": row["cause"], "source": None, "run": None}
+    try:
+        runs = await operator.runs(row["id"])
+    except Refused as e:
+        return done | {"outcome": SKIPPED, "why": str(e)}
+    except OperatorUnavailable as e:
+        return done | {"outcome": NOT_REACHED, "why": str(e)}
+    completed = [run for run in runs if run["status"] == "COMPLETED"]
+    if completed:
+        return done | {"outcome": SKIPPED, "why": f"reconciled meanwhile (a run completed at {completed[0]['finished_at']})"}
+    if runs and runs[0]["status"] == "RUNNING":
+        return done | {"outcome": SKIPPED, "why": f"a run of it is going (since {runs[0]['started_at']})"}
+
+    workload = SOURCE_OF.get(row["cause"])
+    if workload is None:      # code never proposes such a day; it is checked anyway
+        return done | {"outcome": SKIPPED, "why": f"{row['cause']} is not a cause the agent reruns"}
+    ok, why = await healthy(workload, tools)
+    done["source"] = why
+    if not ok:
+        return done | {"outcome": SKIPPED, "why": f"{workload} is not healthy yet: {why}"}
+
+    try:
+        run = await operator.rerun(row["id"])
+    except Refused as e:
+        return done | {"outcome": REFUSED, "why": str(e)}
+    except OperatorUnavailable as e:
+        return done | {"outcome": NOT_REACHED, "why": str(e)}
+    return done | {"outcome": RERUN, "why": None, "run": run}
+
+
+def run_settled(run: dict | None) -> str | None:
+    """How a rerun ended, or None while it is still going."""
+    if run is None or run["status"] == "RUNNING":
+        return None
+    if run["status"] == "COMPLETED":
+        found = run.get("discrepancies") or 0
+        return f"COMPLETED, {found} discrepancy(ies)" if found else "COMPLETED, clean"
+    return f"{run['status']} again: {(run.get('error') or '')[:160]}"
 
 
 def settled(saga: dict) -> str | None:

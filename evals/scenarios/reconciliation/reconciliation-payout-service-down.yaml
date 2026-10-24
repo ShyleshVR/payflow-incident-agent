@@ -1,0 +1,14 @@
+name: reconciliation-payout-service-down
+alert: ReconciliationRunFailed
+recording: ReconciliationRunFailed-payout-service-down.json
+description: >
+  payout-service was scaled to zero; 2026-10-22 was reconciled by hand and failed at the payout lookups. 2026-10-21 was still failed from the processor round.
+caused_by: >
+  Recorded live on 2026-10-23 with evals/faults/reconciliation-source-down.sh. The hour's evidence also shows the earlier rounds of that morning (the alert looks back an hour): the source down now is the cause.
+cleaned_up_by: The workload was scaled back; the days were reconciled again.
+expected:
+  root_causes: [payouts_unavailable]
+  # The failed run's error names the source, in the overview and in reconciliation-service's log;
+  # the source's own pods show it scaled to zero.
+  key_checks: [reconciliation, reconciliation_errors, payout_service_pods]
+  rerun: ["2026-10-21", "2026-10-22"]

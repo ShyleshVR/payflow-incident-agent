@@ -1,0 +1,11 @@
+name: kafka-crash-loop
+alert: KafkaUnreachable
+recording: KafkaUnreachable-kafka-crash-loop.json
+description: >
+  kafka-0 started with a command that exits at once: CrashLoopBackOff.
+caused_by: >
+  Recorded live on 2026-10-23 by the agent's service (evals/faults/kafka-down.sh).
+cleaned_up_by: evals/faults/kafka-down.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [kafka_not_running]
+  key_checks: [kafka_pods]

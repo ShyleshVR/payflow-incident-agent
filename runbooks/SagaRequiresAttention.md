@@ -22,8 +22,8 @@ shown_by:
   processor_no_answer: [parked_sagas, payment_service_errors, partner_calls]
   bank_no_answer: [parked_sagas, payout_service_errors, partner_calls]
   partner_rejected: [parked_sagas, payment_service_errors, payout_service_errors]
-  # not ledger_errors: the ledger logs a refused posting at INFO, which that check does not read
-  ledger_rejected: [parked_sagas, payment_service_errors, payout_service_errors]
+  # ledger_errors since PayFlow logs a refused posting at WARN (2026-10-23; before, at INFO, unseen)
+  ledger_rejected: [parked_sagas, ledger_errors, payment_service_errors, payout_service_errors]
 # The next step for each cause. For the two retryable causes it comes with the retry list code
 # made; for the others a person acts, and approving only records the decision.
 proposals:
@@ -65,7 +65,7 @@ checks:
   ledger_errors:
     tool: get_recent_errors
     arguments: {workload: ledger-service, minutes: 15}
-    tells: What the ledger logged at WARN or ERROR, such as its database or Kafka failing. Not a refused posting, which it logs at INFO; a refusal shows in the parked sagas' last errors and payment-service's or payout-service's log.
+    tells: What the ledger logged at WARN or ERROR, including each posting it refused and why ("Ledger command refused ... reason=..."), and its database or Kafka failing.
 ---
 # SagaRequiresAttention
 

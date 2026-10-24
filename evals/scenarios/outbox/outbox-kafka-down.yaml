@@ -1,0 +1,11 @@
+name: outbox-kafka-down
+alert: OutboxBacklog
+recording: OutboxBacklog-kafka-down.json
+description: >
+  Kafka scaled to zero under payment traffic: payment-service's outbox piles up (4170 pending).
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/kafka-down.sh zero, under traffic).
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [kafka_unreachable]
+  key_checks: [kafka_pods]

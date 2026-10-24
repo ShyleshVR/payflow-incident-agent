@@ -153,8 +153,8 @@ payflow-agent pending
 ```
 
 From now on every alert PayFlow raises arrives here. Alerts the agent has no runbook for are
-recorded (`no_runbook`), not investigated: so far there is one runbook, for
-`ProcessorCircuitOpen`.
+recorded (`no_runbook`), not investigated: every alert in PayFlow's rules has one, so this
+happens only for an alert added to PayFlow after the runbooks were written.
 
 ## 6. Try it: break PayFlow and watch
 
@@ -205,6 +205,31 @@ the agent's check just before each retry finds the processor not answering yet a
 all, and says so. Rejected, they stay parked. Afterwards, `evals/faults/captures-parked.sh stop`
 retries any still parked.
 
+**The other thing it does: reconciling a failed day again.** Make a day's reconciliation fail
+with the ledger down, then let the agent run it again:
+
+```bash
+evals/faults/reconciliation-source-down.sh start ledger-service      # yesterday's run fails; the alert fires at once
+```
+
+```powershell
+payflow-agent pending                              # ReconciliationRunFailed: ledger_unavailable, with the day to run again
+```
+
+```bash
+evals/faults/reconciliation-source-down.sh stop ledger-service       # the ledger is back
+```
+
+```powershell
+payflow-agent approve 3 --note "ledger is back"
+payflow-agent show latest                          # "What was carried out": the day run again, and how it ended
+```
+
+Approved while the ledger is still down, the agent's check before the rerun finds it not healthy
+and skips the day. `ReconciliationRunFailed` keeps firing for an hour after a failure, so a second
+failure within that hour starts no new investigation in the service; investigate it by hand
+(`payflow-agent investigate ReconciliationRunFailed`).
+
 Other faults: `processor-not-running.sh`, `processor-crash-loop.sh`,
 `processor-database-access-lost.sh`, `processor-unreachable.sh`, each with `start` and `stop`.
 Run the `stop` of whatever you started. Leave 16 minutes between faults: the checks look back 15
@@ -251,7 +276,8 @@ included (the secrets are kept).
 | Alertmanager's log: "401" for the incident-agent receiver | The agent's `.env` token differs from PayFlow's (secrets regenerated) | `.venv\Scripts\python scripts\write_env.py`, then restart the service |
 | Alertmanager's log: "permission denied" reading `/etc/alertmanager/agent/token` | An older PayFlow branch without the pod's `fsGroup` | Update PayFlow to `feature/incident-agent-access` and redeploy |
 | An investigation ends `not_firing` | The alert cleared before its turn in the queue | Nothing to do |
-| `no_runbook` for an alert | Only `ProcessorCircuitOpen` and `SagaRequiresAttention` have runbooks so far | Expected |
+| `no_runbook` for an alert | Every alert in PayFlow's rules (16) has a runbook in `runbooks/`; this one is new to PayFlow | Expected: write its runbook (`runbooks/<Alert>.md`) |
+| A day's rerun is skipped: "reconciled meanwhile" | The hourly catch-up (or someone) reconciled it between the proposal and the approval | Nothing to do |
 | An approved retry list skips every saga: "the processor does not answer yet" | The processor's calls in the last 2 minutes went unanswered, or its breaker is open, or (with no calls) its health still shows recent 5xx | Wait a few minutes after the outage and run `evals/faults/captures-parked.sh stop`, or approve the next proposal |
 | Every saga of an approved list: "Not carried out: ... No operator secret" | `.env` has no `PAYFLOW_OPERATOR_CLIENT_SECRET` (PayFlow older than the operator login, or `write_env.py` not run since) | Update PayFlow, run its `generate-local-secrets.sh`, then `write_env.py`, and restart the service |
 | The same question gets different answers on different runs | `LLM_CACHE_PROMPT=on` | Leave it off (the default) when results must repeat |

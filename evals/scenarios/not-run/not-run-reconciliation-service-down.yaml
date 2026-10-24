@@ -1,0 +1,10 @@
+name: not-run-reconciliation-service-down
+alert: ReconciliationNotRun
+recording: ReconciliationNotRun-service-down.json
+description: >
+  Derived, not a live incident: 26 hours without a success cannot be waited for. reconciliation-service has had no pod for over a day: no run started.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from ReconciliationRunFailed-processor-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [service_not_running]
+  key_checks: [reconciliation_pods]

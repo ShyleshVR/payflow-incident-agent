@@ -1,0 +1,10 @@
+name: not-run-reconciliation-runs-not-finishing
+alert: ReconciliationNotRun
+recording: ReconciliationNotRun-runs-not-finishing.json
+description: >
+  Derived, not a live incident: 26 hours without a success cannot be waited for. The service's pods are OOMKilled mid-run, each next attempt takes the day over, and none completes.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from ReconciliationRunFailed-processor-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [runs_not_finishing]
+  key_checks: [reconciliation_pods, reconciliation_errors]

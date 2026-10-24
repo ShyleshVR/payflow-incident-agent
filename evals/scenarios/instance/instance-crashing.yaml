@@ -1,0 +1,11 @@
+name: instance-crashing
+alert: InstanceDown
+recording: InstanceDown-one-pod-crashing.json
+description: >
+  One notification-service pod's process stopped every 15 seconds: it restarts and backs off.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/instance-down.sh notification-service).
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [instance_crashing]
+  key_checks: [service_pods]

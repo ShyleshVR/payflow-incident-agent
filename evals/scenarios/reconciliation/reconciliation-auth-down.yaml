@@ -1,0 +1,11 @@
+name: reconciliation-auth-down
+alert: ReconciliationRunFailed
+recording: ReconciliationRunFailed-auth-down.json
+description: >
+  Derived, not a live incident. merchant-service down: the run could not get its token. With it down the agent's own reads would lose their tokens too, so it was not broken live.
+caused_by: python -m evals.derive (evals/derive_reconciliation.py), from ReconciliationRunFailed-ledger-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [auth_unavailable]
+  key_checks: [reconciliation, reconciliation_errors, merchant_service_pods]
+  rerun: ["2026-10-22"]

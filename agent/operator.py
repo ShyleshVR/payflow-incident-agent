@@ -17,6 +17,10 @@ from typing import Any
 import httpx
 
 PARKED = "REQUIRES_ATTENTION"
+RUNS = "/api/v1/reconciliation/runs"
+# PayFlow reconciles a day inside the request that asks for it: seconds for an ordinary day, half an
+# hour for the load test's. The answer is waited for this long; a run still going is then watched.
+RERUN_WAIT_SECONDS = 60
 # A token is renewed this long before it expires.
 _RENEW_BEFORE_SECONDS = 60
 
@@ -49,11 +53,34 @@ class Operator:
         """Resumes a parked saga at the step it stopped at. Returns it as it is just after."""
         return _summary(saga_id, await self._call("POST", f"{_path(saga_id)}/saga/retry"))
 
-    async def _call(self, method: str, path: str) -> Any:
+    async def runs(self, day: str) -> list[dict]:
+        """A day's reconciliation runs, newest first: {"id", "status", "started_at", "finished_at",
+        "error", "discrepancies"}."""
+        answer = await self._call("GET", RUNS, params={"date": day})
+        return sorted((_run(item) for item in answer), key=lambda run: run["started_at"] or "", reverse=True)
+
+    async def rerun(self, day: str) -> dict | None:
+        """Reconciles a day again. The run as PayFlow finished it; None when it was still going after
+        RERUN_WAIT_SECONDS (it goes on in PayFlow; read it with runs()). Refused (409) when a run of
+        that day is already going."""
+        try:
+            answer = await self._call("POST", RUNS, json={"date": day}, timeout=RERUN_WAIT_SECONDS)
+        except _StillGoing:
+            return None
+        return _run(answer.get("run", answer))
+
+    async def _call(self, method: str, path: str, params: dict | None = None, json: dict | None = None,
+                    timeout: float | None = None) -> Any:
         async with self._session() as http:
             for attempt in (1, 2):
                 try:
-                    response = await http.request(method, path, headers={"Authorization": f"Bearer {await self._current_token(http)}"})
+                    response = await http.request(method, path, params=params, json=json,
+                                                  headers={"Authorization": f"Bearer {await self._current_token(http)}"},
+                                                  **({"timeout": timeout} if timeout is not None else {}))
+                except httpx.ReadTimeout as e:
+                    if timeout is not None:     # sent and taken, not answered yet: the caller watches it
+                        raise _StillGoing from e
+                    raise OperatorUnavailable(f"PayFlow did not answer {method} {path} (ReadTimeout)") from e
                 except httpx.HTTPError as e:
                     raise OperatorUnavailable(f"PayFlow did not answer {method} {path} ({type(e).__name__})") from e
                 if response.status_code == 401 and attempt == 1:
@@ -87,6 +114,15 @@ class Operator:
         if self._http is not None:
             return _Borrowed(self._http)
         return httpx.AsyncClient(base_url=self._base_url, timeout=15)
+
+
+class _StillGoing(Exception):
+    """A request PayFlow took and is still working on (only for a call given its own timeout)."""
+
+
+def _run(item: dict) -> dict:
+    return {"id": str(item.get("runId") or item.get("id")), "status": item.get("status"), "started_at": item.get("startedAt"),
+            "finished_at": item.get("finishedAt"), "error": item.get("error"), "discrepancies": item.get("discrepancyCount")}
 
 
 class _Borrowed:

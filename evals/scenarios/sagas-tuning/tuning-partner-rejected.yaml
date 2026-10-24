@@ -1,0 +1,12 @@
+name: tuning-partner-rejected
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-tuning-partner-rejected.json
+description: >
+  For tuning; derived. Two captures parked CAPTURE_REJECTED: the processor refused them (400
+  invalid_request, unknown authorization). Retrying the same capture would be refused again.
+caused_by: python -m evals.derive (evals/derive_sagas.py, SAGAS_TUNING), from SagaRequiresAttention-captures-parked-4.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [partner_rejected]
+  key_checks: [parked_sagas, payment_service_errors]
+  retry: []

@@ -1,0 +1,11 @@
+name: payouts-balance-short
+alert: PayoutsFailing
+recording: PayoutsFailing-balance-short.json
+description: >
+  Derived. Three payouts failed with insufficient_payable_balance; the ledger's WARN lines say it refused their holds.
+caused_by: >
+  python -m evals.derive (evals/derive_alerts.py), from PayoutsFailing-declined-accounts.json.
+cleaned_up_by: evals/faults/payouts-failing.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [balance_short]
+  key_checks: [failed_payouts, ledger_errors]

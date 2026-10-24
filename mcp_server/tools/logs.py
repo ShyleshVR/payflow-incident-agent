@@ -127,6 +127,9 @@ _MASKS = (
     (re.compile(r"\b[a-z]{2,8}_[0-9a-f]{12,}\b"), "<id>"),          # pay_…, auth_…, po_…
     (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b"), "<address>"),
     (re.compile(r"\b[0-9a-f]{16,}\b", re.IGNORECASE), "<hex>"),
+    # Java's default toString(), "EventEnvelope@677c2876": a different hash in every line (found
+    # 2026-10-24: one publish error made 1599 "kinds" of line, crowding every other line out)
+    (re.compile(r"@[0-9a-f]{4,8}\b", re.IGNORECASE), "@<hash>"),
     (re.compile(r"\b\d+(?:\.\d+)?\b"), "<n>"),
 )
 

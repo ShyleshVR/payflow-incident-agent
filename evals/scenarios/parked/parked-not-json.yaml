@@ -1,0 +1,14 @@
+name: parked-not-json
+alert: OutboxMessageParked
+recording: OutboxMessageParked-not-json.json
+description: >
+  A PAYMENT_CREATED message in payment-service's outbox whose payload is cut off (not JSON):
+  payment-service's publisher could not read it to build the event (Jackson's JsonParseException),
+  parked it as FAILED and logged why.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/outbox-message-parked.sh start
+  not-json), no traffic, 16 minutes after the stalled-ledger recording.
+cleaned_up_by: evals/faults/outbox-message-parked.sh stop
+expected:
+  root_causes: [not_serializable]
+  key_checks: [service_errors]

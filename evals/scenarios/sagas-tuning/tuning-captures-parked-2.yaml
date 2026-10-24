@@ -1,0 +1,11 @@
+name: tuning-captures-parked-2
+alert: SagaRequiresAttention
+recording: SagaRequiresAttention-captures-parked-2.json
+description: >
+  For tuning: a copy of sagas-captures-parked-2, where the screening flagged PayFlow's own 'Saga needs attention.' line. Three manual captures parked CAPTURE_UNKNOWN during a simulated processor outage.
+caused_by: evals/faults/captures-parked.sh (or the scratchpad script it came from), live.
+cleaned_up_by: The sagas were retried.
+expected:
+  root_causes: [processor_no_answer]
+  key_checks: [parked_sagas, payment_service_errors]
+  retry: [pay_396bbdcf-9644-4b2b-822b-5d1219052ae6, pay_60d3afa5-7025-4f85-af22-a7913ba5fff9, pay_84e95d5f-31a6-4ba3-921c-8efae9985854]

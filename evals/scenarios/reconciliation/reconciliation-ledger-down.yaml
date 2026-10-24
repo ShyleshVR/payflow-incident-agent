@@ -1,0 +1,14 @@
+name: reconciliation-ledger-down
+alert: ReconciliationRunFailed
+recording: ReconciliationRunFailed-ledger-down.json
+description: >
+  The ledger was scaled to zero; 2026-10-22 was reconciled by hand and failed. The agent's service investigated it (and, approved, ran the day again).
+caused_by: >
+  Recorded live on 2026-10-23 with evals/faults/reconciliation-source-down.sh. The hour's evidence also shows the earlier rounds of that morning (the alert looks back an hour): the source down now is the cause.
+cleaned_up_by: The workload was scaled back; the days were reconciled again.
+expected:
+  root_causes: [ledger_unavailable]
+  # The failed run's error names the source, in the overview and in reconciliation-service's log;
+  # the source's own pods show it scaled to zero.
+  key_checks: [reconciliation, reconciliation_errors, ledger_pods]
+  rerun: ["2026-10-22"]

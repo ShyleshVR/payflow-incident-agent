@@ -1,0 +1,10 @@
+name: not-run-payout-batch-failing
+alert: PayoutBatchNotRun
+recording: PayoutBatchNotRun-batch-failing.json
+description: >
+  Derived, not a live incident: 26 hours without a success cannot be waited for. payout-service runs, but every batch attempt failed: the ledger could not be read for the payable balances.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from PayoutsFailing-declined-accounts.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [batch_failing]
+  key_checks: [payout_errors]

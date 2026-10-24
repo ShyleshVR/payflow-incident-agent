@@ -1,0 +1,11 @@
+name: dead-letters-processing-failure
+alert: DeadLettersArriving
+recording: DeadLettersArriving-processing-failure.json
+description: >
+  Derived. A payout event that is valid JSON but lacks its merchantId: webhook-service rejects it and dead-letters it at once.
+caused_by: >
+  python -m evals.derive (evals/derive_more.py), from DeadLettersArriving-unreadable-message.json.
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [processing_failure]
+  key_checks: [webhook_errors]

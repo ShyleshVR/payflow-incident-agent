@@ -27,6 +27,10 @@ HELD_OUT_DIR = SCENARIOS_DIR / "held-out"
 FRESH_DIR = SCENARIOS_DIR / "fresh"
 # SagaRequiresAttention, made on 2026-10-22/23 before any model answered them; run once, never tuned on.
 SAGAS_DIR = SCENARIOS_DIR / "sagas"
+# Copies to tune SagaRequiresAttention on, so that the set above keeps its first, honest score.
+SAGAS_TUNING_DIR = SCENARIOS_DIR / "sagas-tuning"
+# ReconciliationRunFailed, made on 2026-10-23 before any model answered them; run once, never tuned on.
+RECONCILIATION_DIR = SCENARIOS_DIR / "reconciliation"
 FIXTURES_DIR = EVALS_DIR / "fixtures"
 
 
@@ -41,8 +45,9 @@ class Scenario:
     forbidden_causes: tuple[str, ...] = ()   # a planted instruction asked for one of these to be reported
     forbidden_text: tuple[str, ...] = ()     # ... or for the model to say one of these
     planted_in: str | None = None            # the check whose result carries that instruction
-    # For an alert about parked sagas: the sagas (payment or payout ids) the proposal's retry list
-    # must hold, exactly; None: the scenario says nothing about a retry list.
+    # For an alert whose action list code makes: the ids the proposal's list must hold, exactly:
+    # sagas to retry (expected.retry, payment or payout ids) or days to reconcile again
+    # (expected.rerun, dates). None: the scenario says nothing about such a list.
     retry: tuple[str, ...] | None = None
 
     @property
@@ -90,9 +95,11 @@ def load(path: Path, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | Non
     planted_in = expected.get("planted_in")
     if ("must_not" in expected) != (planted_in is not None):
         raise invalid("expected.planted_in (the check that carries a planted instruction) and expected.must_not go together")
-    retry = expected.get("retry")
+    if "retry" in expected and "rerun" in expected:
+        raise invalid("expected has a retry list (sagas) or a rerun list (days), not both")
+    retry = expected.get("retry", expected.get("rerun"))
     if retry is not None and (not isinstance(retry, list) or not all(isinstance(item, str) for item in retry)):
-        raise invalid("expected.retry lists the payment or payout ids the retry list must hold (an empty list: none)")
+        raise invalid("expected.retry / expected.rerun list the ids the proposal's list must hold (an empty list: none)")
     if set(forbidden_causes) & set(causes):
         raise invalid(f"{sorted(set(forbidden_causes) & set(causes))} cannot be both the expected cause and one that must not be reported")
 
@@ -114,9 +121,11 @@ def load(path: Path, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | Non
     recorded = traces.load(recording)
     if recorded.get("alert_name") != runbook.alert:
         raise invalid(f"its recording is of {recorded.get('alert_name')}, not {runbook.alert}")
-    # a replay may choose any check of the runbook, so the recording must hold every one of them
+    # a replay may choose any check of the runbook, so the recording must hold every one of them,
+    # with the labels of the alert it recorded filled in
     recorded_calls = {(call["tool"], _key(call["arguments"])) for step in recorded["steps"] for call in step["tool_calls"]}
-    missing = [check.name for check in runbook.checks if (check.tool, _key(check.arguments)) not in recorded_calls]
+    resolved = runbooks.resolve(runbook.as_dict(), _recorded_alerts(recorded))
+    missing = [check["name"] for check in resolved["checks"] if (check["tool"], _key(check["arguments"])) not in recorded_calls]
     if missing:
         raise invalid(f"its recording has no result for the check(s) {missing}: record the incident again")
 
@@ -125,6 +134,15 @@ def load(path: Path, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | Non
                     forbidden_causes=forbidden_causes, forbidden_text=forbidden_text,
                     planted_in=None if planted_in is None else str(planted_in),
                     retry=None if retry is None else tuple(retry))
+
+
+def _recorded_alerts(recorded: dict) -> list[dict]:
+    """The firing alerts the recorded investigation was about, from its intake's call."""
+    for step in recorded["steps"]:
+        for call in step["tool_calls"]:
+            if call["tool"] == "list_active_alerts" and not call["is_error"]:
+                return [alert for alert in call["result"]["alerts"] if alert["alert"] == recorded["alert_name"]]
+    return recorded.get("alerts", [])
 
 
 def _key(arguments: dict) -> str:

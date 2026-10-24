@@ -1,0 +1,11 @@
+name: discrepancies-settlement
+alert: ReconciliationDiscrepancies
+recording: ReconciliationDiscrepancies-settlement.json
+description: >
+  A settlement moved 5 days earlier in the ledger, then 2026-10-22 reconciled: CAPTURED_NOT_SETTLED.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/reconciliation-corrupt.sh).
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [money_not_booked]
+  key_checks: [reconciliation]

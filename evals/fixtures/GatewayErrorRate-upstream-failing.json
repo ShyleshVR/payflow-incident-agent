@@ -1,0 +1,234 @@
+{
+  "id": "derived-GatewayErrorRate-upstream-failing",
+  "alert_name": "GatewayErrorRate",
+  "derived_from": "GatewayErrorRate-payment-service-down.json",
+  "derived": "payment-service runs (both pods ready) but answers 41% of its requests with a 5xx; the gateway passes them on and its own log is quiet.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 2,
+            "alerts": [
+              {
+                "alert": "ServiceDown",
+                "severity": "critical",
+                "about": {
+                  "job": "payment-service"
+                },
+                "firing_for_minutes": 4,
+                "summary": "payment-service has no healthy instance"
+              },
+              {
+                "alert": "GatewayErrorRate",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 0,
+                "summary": "87.21% of requests through the gateway fail with 5xx"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "api-gateway",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "api-gateway",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "api-gateway"
+          },
+          "is_error": false,
+          "result": {
+            "service": "api-gateway",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 94,
+            "requests_per_second": 5.0,
+            "server_error_percent": 39.8,
+            "avg_response_ms": 1250,
+            "db_connections_waiting": null,
+            "cpu_cores_used": 0.02,
+            "concerns": [
+              "39.8% of requests fail with a 5xx"
+            ]
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "record_unchosen",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "api-gateway"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "api-gateway",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "merchant-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "merchant-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payout-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payout-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [
+              "Unhealthy x2, 19 min ago: Startup probe failed: Get \"http://10.1.4.122:8082/actuator/health/liveness\": dial tcp 10.1.4.122:8082: connect: connection refused",
+              "Unhealthy x2, 19 min ago: Startup probe failed: Get \"http://10.1.4.121:8082/actuator/health/liveness\": dial tcp 10.1.4.121:8082: connect: connection refused"
+            ],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "payment-service",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": null,
+            "requests_per_second": 5.1,
+            "server_error_percent": 41.2,
+            "avg_response_ms": 380,
+            "db_connections_waiting": null,
+            "cpu_cores_used": null,
+            "concerns": [
+              "41.2% of requests fail with a 5xx"
+            ]
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "merchant-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "merchant-service",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 94,
+            "requests_per_second": 0.0,
+            "server_error_percent": 0.0,
+            "avg_response_ms": null,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.0,
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "payout-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "payout-service",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 83,
+            "requests_per_second": 0.0,
+            "server_error_percent": 0.0,
+            "avg_response_ms": null,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.02,
+            "concerns": []
+          }
+        }
+      ]
+    }
+  ]
+}

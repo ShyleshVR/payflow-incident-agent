@@ -28,7 +28,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from agent import config, runbooks
 from agent import trace as traces
-from evals.scenario import FIXTURES_DIR
+from evals.scenario import FIXTURES_DIR, _recorded_alerts
 from mcp_server import server
 from mcp_server.clients import kube
 from mcp_server.tools import logs, sagas
@@ -68,6 +68,12 @@ class Derivation:
     plants: dict[str, LogLine | ParkedSaga] = field(default_factory=dict)   # check name -> what is added to its result
     # (tool, arguments, result) -> (arguments, result), for every call that did not fail; None: none
     rewrite: Callable[[str, dict, object], tuple[dict, object]] | None = None
+    # A recording of another alert, made from a related one (ReconciliationNotRun from a run that
+    # failed): its name; the rewrite then gives the intake its alert. None: the source's alert.
+    alert: str | None = None
+    # Calls the source never made, for checks the other alert's runbook has: (tool, arguments, result),
+    # each result built with the tool's own code.
+    adds: tuple = ()
 
 
 # What a planted instruction asks for. Each is tried in each carrier below.
@@ -229,13 +235,16 @@ DERIVATIONS = (*DERIVATIONS, *HELD_OUT, *FRESH)
 def derive(derivation: Derivation, fixtures_dir: Path = FIXTURES_DIR, runbooks_dir: Path | None = None) -> dict:
     """The derived recording, as a document. Nothing is written."""
     source = traces.load(fixtures_dir / derivation.source)
-    runbook = runbooks.load(source["alert_name"], runbooks_dir or config.RUNBOOKS_DIR)
-    checks = {check.name: check for check in runbook.checks}
+    alert_name = derivation.alert or source["alert_name"]
+    # with the labels of the alert the source recorded filled in (ServiceDown's "{job}")
+    runbook = runbooks.resolve(runbooks.load(alert_name, runbooks_dir or config.RUNBOOKS_DIR).as_dict(),
+                               _recorded_alerts(source))
+    checks = {check["name"]: check for check in runbook["checks"]}
 
     def call_of(name: str) -> tuple[str, str]:
-        return checks[name].tool, _key(checks[name].arguments)
+        return checks[name]["tool"], _key(checks[name]["arguments"])
 
-    errors = {call_of(name): _error(checks[name].tool, why) for name, why in derivation.fails.items()}
+    errors = {call_of(name): _error(checks[name]["tool"], why) for name, why in derivation.fails.items()}
     plants = {call_of(name): plant for name, plant in derivation.plants.items()}
 
     steps = []
@@ -254,13 +263,19 @@ def derive(derivation: Derivation, fixtures_dir: Path = FIXTURES_DIR, runbooks_d
             calls.append({"tool": call["tool"], "arguments": arguments, "is_error": is_error, "result": result})
         if calls:
             steps.append({"step": step["step"], "tool_calls": calls})
-    return {"id": f"derived-{Path(derivation.recording).stem}", "alert_name": source["alert_name"],
+    if derivation.adds:
+        steps.append({"step": "gather", "tool_calls": [{"tool": tool, "arguments": arguments, "is_error": False, "result": result}
+                                                       for tool, arguments, result in derivation.adds]})
+    return {"id": f"derived-{Path(derivation.recording).stem}", "alert_name": alert_name,
             "derived_from": derivation.source, "derived": derivation.what, "steps": steps}
 
 
 def all_derivations() -> tuple[Derivation, ...]:
-    from evals.derive_sagas import SAGAS  # it builds on this module
-    return (*DERIVATIONS, *SAGAS)
+    from evals.derive_alerts import ALERTS  # they build on this module
+    from evals.derive_more import MORE
+    from evals.derive_reconciliation import RECONCILIATION
+    from evals.derive_sagas import SAGAS, SAGAS_TUNING
+    return (*DERIVATIONS, *SAGAS, *SAGAS_TUNING, *RECONCILIATION, *ALERTS, *MORE)
 
 
 def write_all(fixtures_dir: Path = FIXTURES_DIR) -> list[Path]:
@@ -284,7 +299,9 @@ def _error(tool: str, why: Exception) -> str:
 
 
 def _planted(result: dict, plant: LogLine | ParkedSaga) -> dict:
-    return _with_log_line(result, plant) if isinstance(plant, LogLine) else _with_parked_saga(result, plant)
+    # by what it carries, not its class: run as "python -m evals.derive" this module is loaded twice
+    # (as __main__ and as evals.derive), and a LogLine made by another module is the other one's
+    return _with_log_line(result, plant) if hasattr(plant, "message") else _with_parked_saga(result, plant)
 
 
 def _with_log_line(result: dict, line: LogLine) -> dict:

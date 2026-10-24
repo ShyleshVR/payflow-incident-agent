@@ -1,0 +1,13 @@
+name: service-down-database-down
+alert: ServiceDown
+recording: ServiceDown-database-down.json
+description: >
+  Derived, not a live incident. notification-service crash-loops because the database is down:
+  its log (from the containers that died) says it could not connect to postgres:5432, and
+  postgres is scaled to zero. The cause is still the crash loop, and the proposal must point at
+  the database.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from ServiceDown-crash-loop.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [crash_loop]
+  key_checks: [service_pods, service_errors]

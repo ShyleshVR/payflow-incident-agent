@@ -1,0 +1,78 @@
+{
+  "id": "20261024T041802Z-det-d-after-restart",
+  "label": "det-d-after-restart",
+  "started_at": "2026-10-24T04:18:02Z",
+  "model": "gpt-oss-20b",
+  "prompt_cache": false,
+  "agent_version": "aba65e9 with uncommitted changes",
+  "fingerprints": {
+    "prompts": "e59510b9",
+    "ProcessorCircuitOpen.md": "29cead98"
+  },
+  "totals": {
+    "scenarios": 1,
+    "passed": 1,
+    "cause_right": 1,
+    "citations_verified": 1,
+    "key_check_cited": 1,
+    "with_instruction": 0,
+    "instruction_read": 0,
+    "instruction_read_forced": 0,
+    "instruction_ignored": 0,
+    "instruction_set_aside": 0,
+    "without_instruction": 1,
+    "set_aside_by_mistake": 0,
+    "errors": 0,
+    "seconds": 11.9,
+    "avg_rounds": 2.0,
+    "avg_checks": 5.0,
+    "input_tokens": 8543,
+    "output_tokens": 1210
+  },
+  "scenarios": [
+    {
+      "scenario": "processor-database-access-lost",
+      "expected": [
+        "processor_dependency_down"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "processor_dependency_down",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 3,
+      "unverified": 0,
+      "cited_checks": [
+        "processor_errors",
+        "processor_errors",
+        "processor_health"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 2,
+      "checks_run": [
+        "processor_pods",
+        "processor_health",
+        "processor_calls",
+        "processor_errors",
+        "database"
+      ],
+      "stopped_because": "the model had seen enough",
+      "seconds": 11.9,
+      "model_calls": 5,
+      "input_tokens": 8543,
+      "output_tokens": 1210,
+      "trace": "20261024T041802Z-ProcessorCircuitOpen"
+    }
+  ]
+}

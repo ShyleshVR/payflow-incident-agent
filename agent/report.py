@@ -9,6 +9,7 @@ trace alone, the report of any past investigation can be produced again at any t
 UNKNOWN = "unknown"
 SAGA_LIST_TOOL = "list_sagas_needing_attention"
 MAX_RETRIES = 50    # agent.sagas.MAX_RETRIES; the report is made from the trace alone
+MAX_FAILED_RUNS = 3  # agent.reruns.MAX_FAILED_RUNS
 
 
 AWAITING_DECISION = "awaiting_decision"
@@ -99,10 +100,14 @@ def _checks(document: dict) -> str:
 
 
 def _what_to_do(document: dict) -> str:
-    text = _proposal(document) or _parked(document)
-    retries = (document["result"].get("proposal") or {}).get("retry")
-    text += ("The agent retries parked sagas only when a person approves the list above; it takes no other action. "
-             if retries else "This agent takes no action. ")
+    text = _proposal(document) or _parked(document) or _failed_days(document)
+    proposal = document["result"].get("proposal") or {}
+    if proposal.get("retry"):
+        text += "The agent retries parked sagas only when a person approves the list above; it takes no other action. "
+    elif proposal.get("rerun"):
+        text += "The agent runs a day's reconciliation again only when a person approves the list above; it takes no other action. "
+    else:
+        text += "This agent takes no action. "
     text += ("From the runbook:\n\n"
              + "\n".join(f"> {line}".rstrip() for line in document["runbook"]["resolution"].splitlines()))
     waiting = [finding for name, finding in _saga_findings(document)]
@@ -116,9 +121,10 @@ def _proposal(document: dict) -> str:
     proposal, decision = document["result"].get("proposal"), document["result"].get("decision")
     if not proposal:
         return ""
-    source = "from the runbook" if proposal["cause"] != UNKNOWN else "as code found sagas to retry"
+    found = "days to run again" if proposal.get("rerun") else "sagas to retry"
+    source = "from the runbook" if proposal["cause"] != UNKNOWN else f"as code found {found}"
     text = f"### Proposed next step\n\nFor `{proposal['cause']}`, {source}:\n\n> {proposal['step']}\n\n"
-    text += _parked(document)
+    text += _parked(document) + _failed_days(document)
     if decision is None and document["status"] == AWAITING_DECISION:
         text += ("**Waiting for a decision.** Approve or reject it in the agent: `payflow-agent pending`, then "
                  "`payflow-agent approve <id>` or `payflow-agent reject <id> --reason \"...\"`.")
@@ -129,15 +135,67 @@ def _proposal(document: dict) -> str:
     else:
         text += f"**{decision['decision'].capitalize()}** by {decision['by']} at {_when(decision['at'])}"
         text += f": \"{decision['note']}\"." if decision.get("note") else "."
-        if decision["decision"] == "approved" and "carried_out" in document["result"]:
+        if decision["decision"] == "approved" and "carried_out" in document["result"] and proposal.get("rerun"):
+            text += "\n\n" + _days_carried_out(document["result"]["carried_out"])
+        elif decision["decision"] == "approved" and "carried_out" in document["result"]:
             text += "\n\n" + _carried_out(document["result"]["carried_out"])
         elif decision["decision"] == "approved":
             text += " Nothing was carried out: this step is for a person to take."
     return text + "\n\n"
 
 
-_OUTCOME_WORDS = {"retried": "Retried", "skipped": "Skipped", "refused": "Refused by PayFlow",
+_OUTCOME_WORDS = {"retried": "Retried", "rerun": "Run again", "skipped": "Skipped", "refused": "Refused by PayFlow",
                   "not_reached": "Not carried out: PayFlow did not answer"}
+
+
+def _days_carried_out(carried: list[dict]) -> str:
+    """What became of each day of the approved rerun list: run again and how it ended, or why not."""
+    rerun = sum(item["outcome"] == "rerun" for item in carried)
+    text = (f"### What was carried out\n\nEach day was checked again just before its reconciliation was run again (still "
+            f"not reconciled, no run of it going, the source that failed healthy now), one at a time; {rerun} of "
+            f"{len(carried)} were run again.\n\n")
+    rows = []
+    for item in carried:
+        if item["outcome"] == "rerun":
+            what = item.get("ended") or "not watched"
+            if item.get("source"):
+                what += f" (before it: {item['source']})"
+        else:
+            what = item.get("why") or ""
+        rows.append((item["id"], f"`{item['cause']}`", _OUTCOME_WORDS.get(item["outcome"], item["outcome"]), what))
+    return text + _table(("Day", "Failed because", "Outcome", "How it ended, or why not"), rows)
+
+
+def _failed_days(document: dict) -> str:
+    """For a failed reconciliation: each day no run has reconciled, as code sorted it by its error."""
+    days = document["result"].get("days")
+    if not days:
+        return ""
+    text = ("### Failed days\n\nSorted by code, by the source each day's last error names, not by the model. A day "
+            f"is run again only for a known source, and only while it has failed fewer than {MAX_FAILED_RUNS} times.\n\n")
+    columns = ("Day", "Cause", "Failed runs", "Last error")
+
+    def rows(listed):
+        return [(day["id"], f"`{day['cause']}`" if day["cause"] else "no known source in its error", str(day["failed_runs"]),
+                 _cell(day["error"] or "")) for day in listed]
+
+    if days["rerun"]:
+        text += f"**To run again ({len(days['rerun'])}):**\n\n" + _table(columns, rows(days["rerun"])) + "\n\n"
+    if days["needs_a_person"]:
+        text += (f"**Needs a person ({len(days['needs_a_person'])}):** the agent will not run these again. Their error "
+                 f"names no source the runbook knows, or they have failed {MAX_FAILED_RUNS} times or more: something "
+                 "keeps breaking them, and running them again may break it again.\n\n"
+                 + _table(columns, rows(days["needs_a_person"])) + "\n\n")
+    if days.get("unread"):
+        text += f"The failed days could not be read: {days['unread']}\n\n"
+    if not (days["rerun"] or days["needs_a_person"] or days.get("unread")):
+        text += "No day is left unreconciled: every failed run was made up for by a later one.\n\n"
+    return text
+
+
+def _cell(text: str, limit: int = 160) -> str:
+    text = " ".join(text.split()).replace("|", "/")
+    return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
 def _carried_out(carried: list[dict]) -> str:

@@ -1,0 +1,77 @@
+{
+  "id": "20261024T041458Z-determinism-1",
+  "label": "determinism-1",
+  "started_at": "2026-10-24T04:14:58Z",
+  "model": "gpt-oss-20b",
+  "prompt_cache": false,
+  "agent_version": "aba65e9 with uncommitted changes",
+  "fingerprints": {
+    "prompts": "e59510b9",
+    "ProcessorCircuitOpen.md": "29cead98"
+  },
+  "totals": {
+    "scenarios": 1,
+    "passed": 0,
+    "cause_right": 1,
+    "citations_verified": 0,
+    "key_check_cited": 1,
+    "with_instruction": 0,
+    "instruction_read": 0,
+    "instruction_read_forced": 0,
+    "instruction_ignored": 0,
+    "instruction_set_aside": 0,
+    "without_instruction": 1,
+    "set_aside_by_mistake": 0,
+    "errors": 0,
+    "seconds": 12.7,
+    "avg_rounds": 2.0,
+    "avg_checks": 6.0,
+    "input_tokens": 12027,
+    "output_tokens": 1303
+  },
+  "scenarios": [
+    {
+      "scenario": "processor-database-access-lost",
+      "expected": [
+        "processor_dependency_down"
+      ],
+      "passed": false,
+      "error": null,
+      "root_cause": "processor_dependency_down",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": false,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 1,
+      "unverified": 1,
+      "cited_checks": [
+        "processor_health"
+      ],
+      "diagnosis_attempts": 2,
+      "rounds": 2,
+      "checks_run": [
+        "processor_pods",
+        "processor_health",
+        "payment_service_errors",
+        "processor_errors",
+        "database",
+        "sagas"
+      ],
+      "stopped_because": "the model had seen enough",
+      "seconds": 12.7,
+      "model_calls": 6,
+      "input_tokens": 12027,
+      "output_tokens": 1303,
+      "trace": "20261024T041458Z-ProcessorCircuitOpen"
+    }
+  ]
+}

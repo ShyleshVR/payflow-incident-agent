@@ -169,7 +169,7 @@ class Service:
             self.store.update(investigation_id, status=states.AWAITING_DECISION if waiting else states.COMPLETED,
                               finished_at=states.utc_now(), trace_id=document["id"],
                               root_cause=document["result"]["diagnosis"]["root_cause"], proposal=proposal.get("step"),
-                              to_retry=len(proposal.get("retry", [])) or None)
+                              to_retry=len(proposal.get("retry") or proposal.get("rerun") or []) or None)
         return investigation_id
 
     async def run(self) -> None:

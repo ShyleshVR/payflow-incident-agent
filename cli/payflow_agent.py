@@ -60,6 +60,12 @@ def main(argv: list[str] | None = None) -> int:
                           help="the fresh scenarios (evals/scenarios/fresh), made to compare models, instead of the others")
     evaluate.add_argument("--sagas", action="store_true",
                           help="the SagaRequiresAttention scenarios (evals/scenarios/sagas), instead of the others")
+    evaluate.add_argument("--reconciliation", action="store_true",
+                          help="the ReconciliationRunFailed scenarios (evals/scenarios/reconciliation), instead of the others")
+    evaluate.add_argument("--set", metavar="NAME", dest="scenario_set",
+                          help="the scenarios of evals/scenarios/NAME (e.g. service-down), instead of the others")
+    evaluate.add_argument("--sagas-tuning", action="store_true",
+                          help="the SagaRequiresAttention tuning copies (evals/scenarios/sagas-tuning), instead of the others")
     commands.add_parser("pending", help="investigations whose proposal waits for your decision (asks the service)")
     approve = commands.add_parser("approve", help="approve the proposal of an investigation (asks the service)")
     approve.add_argument("id", type=int, help="the service's investigation id (see: payflow-agent pending)")
@@ -73,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     if arguments.command == "eval":
-        which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else "sagas" if arguments.sagas else None
+        which = "fresh" if arguments.fresh else "held-out" if arguments.held_out else "sagas" if arguments.sagas else "sagas-tuning" if arguments.sagas_tuning else "reconciliation" if arguments.reconciliation else arguments.scenario_set
         return _eval(arguments.label if arguments.label != "eval" or not which else which, arguments.scenario, which)
     if arguments.command == "serve":
         return _serve(arguments.host, arguments.port)
@@ -119,8 +125,12 @@ def _investigate(arguments) -> int:
 def _eval(label: str, only: list[str] | None, which: str | None = None) -> int:
     """Exit code 0 when every scenario passed, 1 when some did not, 2 when the eval could not run."""
     try:
-        folder = {"held-out": scenario.HELD_OUT_DIR, "fresh": scenario.FRESH_DIR, "sagas": scenario.SAGAS_DIR}.get(
-            which, scenario.SCENARIOS_DIR)
+        folder = {"held-out": scenario.HELD_OUT_DIR, "fresh": scenario.FRESH_DIR, "sagas": scenario.SAGAS_DIR,
+                  "sagas-tuning": scenario.SAGAS_TUNING_DIR, "reconciliation": scenario.RECONCILIATION_DIR}.get(
+            which, scenario.SCENARIOS_DIR / which if which else scenario.SCENARIOS_DIR)
+        if not folder.is_dir():
+            print(f"No set {which}: there is no folder {folder}")
+            return FAILED
         scenarios = scenario.load_all(folder)
         if only:
             unknown = sorted(set(only) - {item.name for item in scenarios})
@@ -218,9 +228,9 @@ def _decide(investigation_id: int, command: str, note: str) -> int:
     print(f"Investigation {investigation_id} ({decided['alert_name']}: {decided['root_cause']}): {decided['decision']} by "
           f"{decided['decided_by']} at {decided['decided_at']}.")
     if decided["decision"] == "approved" and decided.get("to_retry"):
-        print(f"The agent is carrying it out now: it checks and retries the {decided['to_retry']} saga(s) proposed, one at "
-              f"a time, then watches them for up to 5 minutes. The report says what became of each: "
-              f"runs/{decided['trace_id']}.md")
+        print(f"The agent is carrying it out now: it checks each of the {decided['to_retry']} item(s) on the approved list "
+              f"again (sagas to retry, or days to reconcile again), carries them out one at a time, and watches them. "
+              f"The report says what became of each: runs/{decided['trace_id']}.md")
     elif decided["decision"] == "approved":
         print("Nothing is carried out: this step is yours to take.")
     return DONE

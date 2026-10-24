@@ -1,0 +1,323 @@
+{
+  "id": "derived-SagaStepStuck-kafka-down",
+  "alert_name": "SagaStepStuck",
+  "derived_from": "SagaStepStuck-ledger-down.json",
+  "derived": "Kafka scaled to zero: the ledger runs, but its commands cannot reach it; payment-service's outbox piles up and its sagas wait in SETTLING.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 3,
+            "alerts": [
+              {
+                "alert": "ServiceDown",
+                "severity": "critical",
+                "about": {
+                  "job": "ledger-service"
+                },
+                "firing_for_minutes": 18,
+                "summary": "ledger-service has no healthy instance"
+              },
+              {
+                "alert": "KafkaConsumerLag",
+                "severity": "warning",
+                "about": {
+                  "consumergroup": "ledger-service",
+                  "topic": "ledger-commands"
+                },
+                "firing_for_minutes": 14,
+                "summary": "ledger-service is 33813 messages behind on ledger-commands"
+              },
+              {
+                "alert": "SagaStepStuck",
+                "severity": "warning",
+                "about": {
+                  "application": "payment-service",
+                  "type": "PAYMENT"
+                },
+                "firing_for_minutes": 0,
+                "summary": "A PAYMENT saga step has been running for 20m 15s"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_messaging_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "kafka_reachable": false,
+            "brokers": 1,
+            "consumers": [
+              {
+                "group": "ledger-service",
+                "topic": "ledger-commands",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              },
+              {
+                "group": "notification-service",
+                "topic": "payment-created",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              },
+              {
+                "group": "payment-service",
+                "topic": "ledger-replies",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              },
+              {
+                "group": "payout-service",
+                "topic": "payout-ledger-replies",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              },
+              {
+                "group": "webhook-service",
+                "topic": "payment-created",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              },
+              {
+                "group": "webhook-service",
+                "topic": "payout-events",
+                "lag": 0,
+                "change": 0,
+                "consumers": null
+              }
+            ],
+            "outboxes": [
+              {
+                "service": "ledger-service",
+                "pending": null,
+                "change": null,
+                "oldest_pending_seconds": null,
+                "parked": null
+              },
+              {
+                "service": "payment-service",
+                "pending": 35612,
+                "change": 35590,
+                "oldest_pending_seconds": 1210,
+                "parked": 0
+              },
+              {
+                "service": "payout-service",
+                "pending": 0,
+                "change": 0,
+                "oldest_pending_seconds": 0,
+                "parked": 0
+              }
+            ],
+            "dead_letters": [],
+            "concerns": [
+              "Kafka cannot be reached (the exporter's last check failed): lag and dead letters may be missing below",
+              "ledger-service reports no outbox metrics: it may be down",
+              "payment-service's outbox is not draining: 35612 pending, the oldest for 1210 seconds, up from 22 15 minutes ago"
+            ]
+          }
+        },
+        {
+          "tool": "list_sagas_needing_attention",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "stuck_after_minutes": 15,
+            "payments_parked": 0,
+            "payments_stuck": 1678,
+            "payouts_parked": 0,
+            "payouts_stuck": 0,
+            "sagas": [
+              {
+                "id": "pay_20fb623f-f028-4829-94b3-90795c585591",
+                "kind": "payment",
+                "reason": "stuck",
+                "stopped_in": "SETTLING",
+                "minutes": 20,
+                "attempts": 8,
+                "failure_code": null,
+                "last_error": null
+              },
+              {
+                "id": "pay_57db3adb-46ed-4041-8161-094e63838725",
+                "kind": "payment",
+                "reason": "stuck",
+                "stopped_in": "SETTLING",
+                "minutes": 20,
+                "attempts": 8,
+                "failure_code": null,
+                "last_error": null
+              },
+              {
+                "id": "pay_657ecbd2-582e-461a-9be1-b338bb306137",
+                "kind": "payment",
+                "reason": "stuck",
+                "stopped_in": "SETTLING",
+                "minutes": 20,
+                "attempts": 8,
+                "failure_code": null,
+                "last_error": null
+              },
+              {
+                "id": "pay_81be7d08-2308-4b5b-91f0-55b586a7a73a",
+                "kind": "payment",
+                "reason": "stuck",
+                "stopped_in": "SETTLING",
+                "minutes": 20,
+                "attempts": 8,
+                "failure_code": null,
+                "last_error": null
+              },
+              {
+                "id": "pay_f29ccdf3-34cb-4b53-87a5-30e66f305516",
+                "kind": "payment",
+                "reason": "stuck",
+                "stopped_in": "SETTLING",
+                "minutes": 20,
+                "attempts": 8,
+                "failure_code": null,
+                "last_error": null
+              }
+            ],
+            "not_listed": 1673,
+            "concerns": [
+              "1678 payment saga(s) have been in the same step for over 15 minutes; the oldest, pay_20fb623f-f028-4829-94b3-90795c585591, for 20 minutes in SETTLING"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "ledger-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "minutes": 15,
+            "pods_read": 0,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "kafka"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "kafka",
+            "kind": "StatefulSet",
+            "pods_wanted": 0,
+            "pods_ready": 0,
+            "healthy_pods": 0,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": [
+              "scaled to zero: no pods are wanted, so none run"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 4,
+            "warning_lines": 7643,
+            "groups": [
+              {
+                "level": "ERROR",
+                "logger": "i.o.exporter.internal.http.HttpExporter",
+                "message": "Failed to export spans. The request could not be executed. Full error message: Failed to connect to jaeger/10.96.62.200:4318",
+                "cause": "java.net.ConnectException: Connection refused",
+                "count": 3,
+                "pods": 2,
+                "last_seen_minutes_ago": 1,
+                "in_crashed_container": false
+              },
+              {
+                "level": "ERROR",
+                "logger": "i.o.exporter.internal.http.HttpExporter",
+                "message": "Failed to export spans. The request could not be executed. Full error message: timeout",
+                "cause": "java.io.IOException: Canceled",
+                "count": 1,
+                "pods": 1,
+                "last_seen_minutes_ago": 2,
+                "in_crashed_container": false
+              },
+              {
+                "level": "WARN",
+                "logger": "c.s.p.saga.SagaOrchestrator",
+                "message": "Ledger reply overdue, command re-sent. sagaId=89d56751-e258-4970-92d7-4cc040bbcd2e, state=SETTLING, commandId=eb8f4a35-0228-41dd-855b-25acdb1a44aa, attempt=5",
+                "cause": null,
+                "count": 7643,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": [
+              "4 ERROR line(s) of 2 kind(s) in the last 15 minutes"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

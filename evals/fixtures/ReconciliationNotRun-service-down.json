@@ -1,0 +1,270 @@
+{
+  "id": "derived-ReconciliationNotRun-service-down",
+  "alert_name": "ReconciliationNotRun",
+  "derived_from": "ReconciliationRunFailed-processor-down.json",
+  "derived": "reconciliation-service has had no pod since the evening of 2026-10-22: no run has started, the last completed 27 hours ago, and 2026-10-23 is not reconciled.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 1,
+            "alerts": [
+              {
+                "alert": "ReconciliationNotRun",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 34,
+                "summary": "No successful reconciliation for over 26 hours"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_reconciliation",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "days": [
+              {
+                "date": "2026-10-23",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-22",
+                "status": "clean",
+                "discrepancies": 0,
+                "runs": 1
+              },
+              {
+                "date": "2026-10-21",
+                "status": "clean",
+                "discrepancies": 0,
+                "runs": 1
+              },
+              {
+                "date": "2026-10-20",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-19",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-18",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-17",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              }
+            ],
+            "detail": {
+              "date": "2026-10-23",
+              "status": "not_reconciled",
+              "trigger": null,
+              "finished_hours_ago": null,
+              "payments_checked": null,
+              "payments_matched": null,
+              "payments_pending": null,
+              "payouts_checked": null,
+              "payouts_matched": null,
+              "payouts_pending": null,
+              "discrepancies": null,
+              "by_type": [],
+              "examples_read": true,
+              "failed_runs": 0,
+              "last_error": null,
+              "running_for_minutes": null
+            },
+            "hours_since_last_completed_run": 27.0,
+            "concerns": [
+              "no reconciliation run has completed for 27 hours (the alert fires after 26)",
+              "2026-10-23 is not reconciled: no run was started for it",
+              "2026-10-20 is not reconciled: no run was started for it",
+              "2026-10-19 is not reconciled: no run was started for it",
+              "2026-10-18 is not reconciled: no run was started for it",
+              "2026-10-17 is not reconciled: no run was started for it"
+            ]
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "processor-simulator"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "reconciliation-service",
+            "minutes": 60
+          },
+          "is_error": false,
+          "result": {
+            "workload": "reconciliation-service",
+            "minutes": 60,
+            "pods_read": 0,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "reconciliation-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "reconciliation-service",
+            "kind": "Deployment",
+            "pods_wanted": 0,
+            "pods_ready": 0,
+            "healthy_pods": 0,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": [
+              "scaled to zero: no pods are wanted, so none run"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "merchant-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "merchant-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payout-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payout-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "sort_days",
+      "tool_calls": [
+        {
+          "tool": "list_failed_reconciliations",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "days": [
+              {
+                "date": "2026-10-21",
+                "failed_runs": 1,
+                "last_error": "org.springframework.web.client.ResourceAccessException: I/O error on GET request for \"http://processor-simulator:8086/v1/reports/settlement/authorizations\": null",
+                "last_failed_hours_ago": 0.01
+              }
+            ],
+            "days_read": 8
+          }
+        }
+      ]
+    }
+  ]
+}

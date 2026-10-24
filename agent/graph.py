@@ -5,8 +5,8 @@ diagnosis is made and checked against that evidence, and a report is written.
 
     START -> intake -> load_runbook -> choose_checks <-> gather
                   \\-> END                    \\           /
-               (not firing)                 record_unchosen -> diagnose -> screen -> sort_sagas
-                                                -> propose -> report -> decide -> END
+               (not firing)                 record_unchosen -> sort_sagas -> sort_days -> diagnose
+                                                -> screen -> propose -> report -> decide -> END
                                                          \\-> retry <-> retry -> watch -> END
                                                        (an approved retry list)
 
@@ -28,7 +28,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from agent import carry_out, diagnosis, prompts, runbooks, sagas
+from agent import carry_out, diagnosis, prompts, reruns, runbooks, sagas
 from agent.llm import Model, ModelError
 from agent.operator import Operator, OperatorUnavailable, Refused
 from agent.state import Investigation
@@ -37,7 +37,10 @@ from agent.trace import Trace
 
 # After this many rounds the investigation moves on with what it has.
 MAX_ROUNDS = 4
-CHOOSE_MAX_TOKENS = 700
+# gpt-oss reasons before it answers, and that counts too: 700, then 1000 ran out with the eight
+# checks of ReconciliationRunFailed (one answer took 1133). An answer that fits is the same under
+# any higher limit.
+CHOOSE_MAX_TOKENS = 2000
 DIAGNOSE_MAX_TOKENS = 1500
 SCREEN_MAX_TOKENS = 1000  # 500 cut off one gpt-oss answer: it reasons a little before answering
 # With thinking on, the thinking is counted against the limit as well.
@@ -87,10 +90,12 @@ async def load_runbook(state: Investigation, runtime: Runtime[Deps]) -> dict:
     trace, so an old investigation can be read without knowing what the file said back then."""
     trace = runtime.context.trace
     async with trace.step("load_runbook") as step:
-        runbook = runbooks.load(state["alert_name"], runtime.context.runbooks_dir)
-        trace.document["runbook"] = runbook.as_dict()
-        step["output"] = {"runbook": f"{runbook.alert}.md", "checks": [check.name for check in runbook.checks]}
-        return {"runbook": runbook.as_dict(), "evidence": {}, "rounds": 0}
+        runbook = runbooks.resolve(runbooks.load(state["alert_name"], runtime.context.runbooks_dir).as_dict(), state["alerts"])
+        trace.document["runbook"] = runbook
+        step["output"] = {"runbook": f"{runbook['alert']}.md", "checks": [check["name"] for check in runbook["checks"]]}
+        if runbook["unresolved_checks"]:
+            step["output"]["unresolved_checks"] = runbook["unresolved_checks"]
+        return {"runbook": runbook, "evidence": {}, "rounds": 0}
 
 
 async def choose_checks(state: Investigation, runtime: Runtime[Deps]) -> dict:
@@ -160,13 +165,14 @@ async def diagnose(state: Investigation, runtime: Runtime[Deps]) -> dict:
         messages = prompts.diagnose(state["alert_name"], state["alerts"], state["runbook"], evidence)
         answer = (await deps.model.ask(messages, shape, max_tokens, deps.diagnose_thinking)).answer.model_dump()
         verified, unverified = diagnosis.verify(answer["evidence"], evidence)
-        unsupported = diagnosis.unsupported(answer, verified, evidence, state["runbook"])
+        by_code = _sorted_by_code(state)
+        unsupported = diagnosis.unsupported(answer, verified, evidence, state["runbook"], by_code)
         attempts = 1
         if unverified or unsupported:
             again = prompts.retry_diagnosis(messages, answer, unverified, unsupported)
             answer = (await deps.model.ask(again, shape, max_tokens, deps.diagnose_thinking)).answer.model_dump()
             verified, unverified = diagnosis.verify(answer["evidence"], evidence)
-            unsupported = diagnosis.unsupported(answer, verified, evidence, state["runbook"])
+            unsupported = diagnosis.unsupported(answer, verified, evidence, state["runbook"], by_code)
             attempts = 2
         concluded = diagnosis.conclude(answer, verified, unverified, attempts, unsupported)
         concluded["set_aside"] = diagnosis.set_aside(answer, evidence)
@@ -213,6 +219,19 @@ async def sort_sagas(state: Investigation, runtime: Runtime[Deps]) -> dict:
         return {"sagas": sorted_}
 
 
+async def sort_days(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """Only for a runbook with error sources (ReconciliationRunFailed): reads every day of the last
+    week that no run has reconciled and whose newest run failed, and sorts them, by the source each
+    one's error names, into those the agent may propose to run again and those that need a person
+    (agent/reruns.py). Code decides this, not the model."""
+    if not state["runbook"].get("error_sources"):
+        return {}
+    async with runtime.context.trace.step("sort_days") as step:
+        sorted_ = reruns.sort(await reruns.read(runtime.context.tools), state["runbook"])
+        step["output"] = sorted_
+        return {"days": sorted_}
+
+
 async def propose(state: Investigation, runtime: Runtime[Deps]) -> dict:
     """The runbook's next step for the cause found. None for unknown, or a cause without one.
     For parked sagas, the retry list code made goes with it, whatever the cause: a retry is
@@ -222,13 +241,13 @@ async def propose(state: Investigation, runtime: Runtime[Deps]) -> dict:
         cause = state["diagnosis"]["root_cause"]
         text = next((item.get("proposal", "") for item in state["runbook"]["causes"] if item["name"] == cause), "")
         sorted_ = state.get("sagas")
-        if sorted_ is None:
+        days = state.get("days")
+        if days is not None:
+            proposal = _with_list(cause, text, days["rerun"], "rerun", state["runbook"]["rerunnable"], reruns.RERUN_STEP)
+        elif sorted_ is None:
             proposal = {"cause": cause, "step": text} if text else None
-        elif sorted_["retry"]:
-            proposal = {"cause": cause, "step": text if cause in state["runbook"]["retryable"] else sagas.RETRY_STEP,
-                        "retry": sorted_["retry"]}
         else:
-            proposal = {"cause": cause, "step": text} if text and cause not in state["runbook"]["retryable"] else None
+            proposal = _with_list(cause, text, sorted_["retry"], "retry", state["runbook"]["retryable"], sagas.RETRY_STEP)
         step["output"] = proposal
         return {"proposal": proposal}
 
@@ -294,6 +313,73 @@ async def watch(state: Investigation, runtime: Runtime[Deps]) -> dict:
         return {"carried_out": carried, "result": state["result"] | {"carried_out": carried}}
 
 
+async def rerun(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """The next day of the approved rerun list: checked again, and its reconciliation run again if it
+    still qualifies (agent/carry_out.py). One day per step, like the saga retries."""
+    deps = runtime.context
+    if deps.operator is None:
+        raise InvestigationError("an approved rerun list needs the operator login, and none was given")
+    async with deps.trace.step("rerun") as step:
+        done = state.get("carried_out", [])
+        outcome = await carry_out.rerun_one(_next_to_rerun(state), deps.operator, deps.tools)
+        step["output"] = outcome
+        return {"carried_out": [*done, outcome]}
+
+
+async def watch_runs(state: Investigation, runtime: Runtime[Deps]) -> dict:
+    """Watches each rerun still going after PayFlow's answer, for up to RUN_WATCH_SECONDS, and
+    records how each ended (or that it was still going)."""
+    deps = runtime.context
+    async with deps.trace.step("watch_runs") as step:
+        carried = [dict(item) for item in state.get("carried_out", [])]
+        for item in carried:
+            if item["outcome"] == carry_out.RERUN:
+                item["ended"] = carry_out.run_settled(item["run"])
+        waiting = [item for item in carried if item["outcome"] == carry_out.RERUN and item["ended"] is None]
+        deadline = deps.clock() + carry_out.RUN_WATCH_SECONDS
+        while waiting and deps.clock() < deadline:
+            await deps.sleep(carry_out.RUN_WATCH_EVERY_SECONDS)
+            for item in list(waiting):
+                try:
+                    runs = await deps.operator.runs(item["id"])
+                except (Refused, OperatorUnavailable):
+                    continue
+                ended = carry_out.run_settled(runs[0] if runs else None)
+                if ended:
+                    item["ended"] = ended
+                    waiting.remove(item)
+        for item in waiting:
+            item["ended"] = f"still running after {carry_out.RUN_WATCH_SECONDS // 60} minutes of watching"
+        step["output"] = {"watched_seconds": carry_out.RUN_WATCH_SECONDS, "days": carried}
+        return {"carried_out": carried, "result": state["result"] | {"carried_out": carried}}
+
+
+def _sorted_by_code(state: Investigation) -> list[dict]:
+    """Every saga or day code has sorted into a cause (sort_sagas, sort_days), whatever list it is on."""
+    rows = []
+    for key, lists in (("sagas", ("retry", "needs_a_person")), ("days", ("rerun", "needs_a_person"))):
+        rows += [row for name in lists for row in (state.get(key) or {}).get(name, [])]
+    return rows
+
+
+def _with_list(cause: str, text: str, listed: list[dict], key: str, acting_causes, default_step: str) -> dict | None:
+    """A proposal with the list code made (sagas to retry, days to rerun), whatever the cause: an
+    action is proposed exactly when the list has something on it, and an acting cause with an empty
+    list proposes nothing (there is nothing to do)."""
+    if listed:
+        return {"cause": cause, "step": text if cause in acting_causes else default_step, key: listed}
+    return {"cause": cause, "step": text} if text and cause not in acting_causes else None
+
+
+def _next_to_rerun(state: Investigation) -> dict | None:
+    done = {item["id"] for item in state.get("carried_out", [])}
+    return next((row for row in state["proposal"]["rerun"] if row["id"] not in done), None)
+
+
+def _after_rerun(state: Investigation) -> str:
+    return "rerun" if _next_to_rerun(state) else "watch_runs"
+
+
 def _next_to_retry(state: Investigation) -> dict | None:
     done = {item["id"] for item in state.get("carried_out", [])}
     return next((row for row in state["proposal"]["retry"] if row["id"] not in done), None)
@@ -301,7 +387,10 @@ def _next_to_retry(state: Investigation) -> dict | None:
 
 def _after_decide(state: Investigation) -> str:
     approved = (state.get("decision") or {}).get("decision") == "approved"
-    return "retry" if approved and (state.get("proposal") or {}).get("retry") else END
+    proposal = state.get("proposal") or {}
+    if approved and proposal.get("retry"):
+        return "retry"
+    return "rerun" if approved and proposal.get("rerun") else END
 
 
 def _after_retry(state: Investigation) -> str:
@@ -330,6 +419,8 @@ async def report(state: Investigation, runtime: Runtime[Deps]) -> dict:
         }
         if state.get("sagas") is not None:
             result["sagas"] = state["sagas"]
+        if state.get("days") is not None:
+            result["days"] = state["days"]
         step["output"] = result
         return {"result": result, "status": "completed"}
 
@@ -357,8 +448,8 @@ def build_graph(checkpointer=None):
     """checkpointer: where the state is saved after every step, so that a paused investigation can
     be resumed (the service's); None where nothing pauses."""
     graph = StateGraph(Investigation, context_schema=Deps)
-    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, sort_sagas, propose,
-                 report, decide, retry, watch):
+    for step in (intake, load_runbook, choose_checks, gather, record_unchosen, diagnose, screen, sort_sagas, sort_days,
+                 propose, report, decide, retry, watch, rerun, watch_runs):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", lambda state: "load_runbook" if state["status"] == "investigating" else END,
@@ -368,13 +459,17 @@ def build_graph(checkpointer=None):
                                 ["gather", "record_unchosen"])
     graph.add_conditional_edges("gather", lambda state: "record_unchosen" if state.get("gathering") else "choose_checks",
                                 ["record_unchosen", "choose_checks"])
-    graph.add_edge("record_unchosen", "diagnose")
+    # code's sorting comes before the diagnosis, which it checks (diagnosis.unsupported)
+    graph.add_edge("record_unchosen", "sort_sagas")
+    graph.add_edge("sort_sagas", "sort_days")
+    graph.add_edge("sort_days", "diagnose")
     graph.add_edge("diagnose", "screen")
-    graph.add_edge("screen", "sort_sagas")
-    graph.add_edge("sort_sagas", "propose")
+    graph.add_edge("screen", "propose")
     graph.add_edge("propose", "report")
     graph.add_edge("report", "decide")
-    graph.add_conditional_edges("decide", _after_decide, ["retry", END])
+    graph.add_conditional_edges("decide", _after_decide, ["retry", "rerun", END])
     graph.add_conditional_edges("retry", _after_retry, ["retry", "watch"])
     graph.add_edge("watch", END)
+    graph.add_conditional_edges("rerun", _after_rerun, ["rerun", "watch_runs"])
+    graph.add_edge("watch_runs", END)
     return graph.compile(checkpointer=checkpointer)

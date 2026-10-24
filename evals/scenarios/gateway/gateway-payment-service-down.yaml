@@ -1,0 +1,11 @@
+name: gateway-payment-service-down
+alert: GatewayErrorRate
+recording: GatewayErrorRate-payment-service-down.json
+description: >
+  payment-service scaled to zero under traffic: the gateway answers every payment request with a 5xx.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/service-down.sh payment-service zero, under traffic).
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [upstream_down]
+  key_checks: [payment_service_pods]

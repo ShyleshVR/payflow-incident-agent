@@ -1,0 +1,11 @@
+name: reconciliation-keeps-failing
+alert: ReconciliationRunFailed
+recording: ReconciliationRunFailed-keeps-failing.json
+description: >
+  Derived, not a live incident. The day failed three times, the processor OOMKilled while serving its report each time (2026-10-11's incident). Running it again would crash it again: it needs a person.
+caused_by: python -m evals.derive (evals/derive_reconciliation.py), from ReconciliationRunFailed-ledger-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [processor_unavailable]
+  key_checks: [reconciliation, reconciliation_errors, processor_pods]
+  rerun: []

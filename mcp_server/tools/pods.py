@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 Workload = Literal[
     "api-gateway", "payment-service", "ledger-service", "merchant-service", "webhook-service",
     "notification-service", "payout-service", "reconciliation-service", "processor-simulator",
-    "postgres", "kafka", "redis",
+    "postgres", "kafka", "redis", "kafka-exporter",
 ]
 
 # A restart count alone misleads (every pod restarts when the machine reboots): what matters is

@@ -1,0 +1,11 @@
+name: kafka-exporter-down
+alert: KafkaUnreachable
+recording: KafkaUnreachable-exporter-down.json
+description: >
+  Derived. Kafka is fine (ready, quiet log, payment-service publishes without a warning) but kafka-exporter crash-loops: only the watching is blind. (Scaled to zero, the exporter would not fire this alert at all: the rule has no absent().)
+caused_by: >
+  python -m evals.derive (evals/derive_alerts.py), from KafkaUnreachable-kafka-scaled-to-zero.json.
+cleaned_up_by: evals/faults/kafka-down.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [exporter_down]
+  key_checks: [exporter_pods]

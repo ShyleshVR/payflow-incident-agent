@@ -17,6 +17,11 @@ import yaml
 _ALERT_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _CAUSE_NAME = re.compile(r"[a-z][a-z0-9_]*")
 _PARKING_CODE = re.compile(r"[A-Z][A-Z0-9_]*")
+# A check's argument (or its text, or a proposal) may name a label of the firing alert, as "{job}":
+# filled in when the investigation starts (resolve), so that one runbook serves every service an
+# alert such as ServiceDown can be about. The labels the alerts tool keeps (mcp_server alerts.SUBJECT_LABELS).
+_PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+LABELS = ("application", "job", "consumergroup", "topic", "type", "pod")
 # Always a possible answer, in every runbook: none of the listed causes, or the evidence does not say which.
 UNKNOWN = "unknown"
 # The section of the guidance that the report quotes as what to do. Every runbook must have it.
@@ -59,6 +64,11 @@ class Runbook:
     # propose to retry. Empty in every other runbook.
     parking_codes: dict[str, tuple[str, ...]] = field(default_factory=dict)
     retryable: tuple[str, ...] = ()
+    # For alerts about failed reconciliation runs: the text in a failed run's error that names the
+    # source that did not answer, per cause (a host such as "ledger-service"), so that code sorts
+    # each failed day into a cause; and the causes whose days the agent may propose to run again.
+    error_sources: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    rerunnable: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         """For the investigation's state and trace, which hold plain data."""
@@ -139,6 +149,11 @@ def parse(text: str, file_name: str) -> Runbook:
                     tuple(str(name) for name in rules["requires_clear"].get(cause.name, ())),
                     " ".join(proposals.get(cause.name, "").split())) for cause in causes]
 
+    for written in [*(str(value) for value in (header.get("checks") or {}).values()), *(str(step) for step in proposals.values())]:
+        unknown = sorted(set(_PLACEHOLDER.findall(written)) - set(LABELS))
+        if unknown:
+            raise invalid(f"{{{unknown[0]}}} names no label an alert carries ({', '.join(LABELS)})")
+
     listed = header.get("checks")
     if not isinstance(listed, dict) or not listed:
         raise invalid("the header needs at least one check")
@@ -159,9 +174,59 @@ def parse(text: str, file_name: str) -> Runbook:
     if not resolution:
         raise invalid(f"the guidance needs a section \"{RESOLUTION_HEADING}\" (the report quotes it)")
     parking_codes, retryable = _parking(header, {cause.name for cause in causes}, invalid)
+    error_sources, rerunnable = _error_sources(header, {cause.name for cause in causes}, invalid)
     return Runbook(alert=header["alert"], based_on=str(header.get("based_on", "")), causes=tuple(causes),
                    checks=tuple(checks), guidance=guidance, resolution=resolution,
-                   parking_codes=parking_codes, retryable=retryable)
+                   parking_codes=parking_codes, retryable=retryable, error_sources=error_sources, rerunnable=rerunnable)
+
+
+def _error_sources(header: dict, cause_names: set[str], invalid) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
+    sources = header.get("error_sources") or {}
+    if not isinstance(sources, dict) or not all(isinstance(listed, list) and listed for listed in sources.values()):
+        raise invalid("error_sources must list, for a cause, the text in a failed run's error that names its source")
+    if set(sources) - cause_names:
+        raise invalid(f"error_sources names a cause the header does not have: {sorted(set(sources) - cause_names)}")
+    seen: dict[str, str] = {}
+    for cause, listed in sources.items():
+        for text in listed:
+            if not isinstance(text, str) or not text.strip():
+                raise invalid(f"error_sources of {cause} must be pieces of text")
+            if text in seen:
+                raise invalid(f"error source {text} is listed for both {seen[text]} and {cause}")
+            seen[text] = cause
+    rerunnable = header.get("rerunnable") or []
+    if not isinstance(rerunnable, list) or set(rerunnable) - set(sources):
+        raise invalid(f"rerunnable names a cause without error sources: {sorted(set(rerunnable) - set(sources))}")
+    return {cause: tuple(listed) for cause, listed in sources.items()}, tuple(rerunnable)
+
+
+def resolve(runbook: dict, alerts: list[dict]) -> dict:
+    """The runbook (as_dict) with the labels of the firing alerts filled in: the first alert that
+    has a label gives its value (the alerts come critical first). A check that names a label no
+    firing alert has cannot be run, and is left out, from the rules too. The trace keeps the runbook
+    as it was resolved."""
+    labels: dict[str, str] = {}
+    for alert in alerts:
+        for name, value in alert.get("about", {}).items():
+            labels.setdefault(name, value)
+
+    def fill(text: str) -> str | None:
+        names = _PLACEHOLDER.findall(text)
+        if any(name not in labels for name in names):
+            return None
+        return _PLACEHOLDER.sub(lambda match: labels[match.group(1)], text)
+
+    checks, dropped = [], set()
+    for check in runbook["checks"]:
+        arguments = {key: fill(value) if isinstance(value, str) else value for key, value in check["arguments"].items()}
+        if any(value is None for value in arguments.values()):
+            dropped.add(check["name"])
+            continue
+        checks.append(check | {"arguments": arguments, "tells": fill(check["tells"]) or check["tells"]})
+    causes = [cause | {"shown_by": [name for name in cause["shown_by"] if name not in dropped],
+                       "requires_clear": [name for name in cause["requires_clear"] if name not in dropped],
+                       "proposal": fill(cause["proposal"]) or cause["proposal"]} for cause in runbook["causes"]]
+    return runbook | {"checks": checks, "causes": causes, "unresolved_checks": sorted(dropped)}
 
 
 def _parking(header: dict, cause_names: set[str], invalid) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:

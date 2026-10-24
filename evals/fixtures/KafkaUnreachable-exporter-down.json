@@ -1,0 +1,166 @@
+{
+  "id": "derived-KafkaUnreachable-exporter-down",
+  "alert_name": "KafkaUnreachable",
+  "derived_from": "KafkaUnreachable-kafka-scaled-to-zero.json",
+  "derived": "Kafka runs and serves (its pod is ready, its log quiet, payment-service publishes without a warning), but kafka-exporter crash-loops: the alert fires although PayFlow is fine; only the watching is blind.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 1,
+            "alerts": [
+              {
+                "alert": "KafkaUnreachable",
+                "severity": "critical",
+                "about": {
+                  "job": "kafka-exporter"
+                },
+                "firing_for_minutes": 0,
+                "summary": "Kafka is unreachable (kafka-exporter cannot read the broker)"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "kafka",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "kafka",
+            "minutes": 15,
+            "pods_read": 1,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "kafka-exporter"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "kafka-exporter",
+            "kind": "Deployment",
+            "pods_wanted": 1,
+            "pods_ready": 0,
+            "healthy_pods": 0,
+            "unhealthy_pods": [
+              {
+                "pod": "kafka-exporter-6688579c4b-qk2xz",
+                "state": "Waiting: CrashLoopBackOff",
+                "restarts": 5,
+                "last_exit": "Error (exit 1), 1 min ago",
+                "detail": "back-off 2m40s restarting failed container=kafka-exporter"
+              }
+            ],
+            "recent_warnings": [],
+            "concerns": [
+              "1 of 1 pods are not ready",
+              "1 pod(s): Waiting: CrashLoopBackOff"
+            ]
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "kafka"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "kafka",
+            "kind": "StatefulSet",
+            "pods_wanted": 1,
+            "pods_ready": 1,
+            "healthy_pods": 1,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_messaging_status",
+          "arguments": {
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "minutes": 15,
+            "kafka_reachable": null,
+            "brokers": null,
+            "consumers": [],
+            "outboxes": [
+              {
+                "service": "ledger-service",
+                "pending": 0,
+                "change": 0,
+                "oldest_pending_seconds": 0,
+                "parked": 0
+              },
+              {
+                "service": "payment-service",
+                "pending": 0,
+                "change": 0,
+                "oldest_pending_seconds": 0,
+                "parked": 0
+              },
+              {
+                "service": "payout-service",
+                "pending": 0,
+                "change": 0,
+                "oldest_pending_seconds": 0,
+                "parked": 0
+              }
+            ],
+            "dead_letters": [],
+            "concerns": [
+              "Prometheus has no data from the Kafka exporter: Kafka's state, lag and dead letters are unknown"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "record_unchosen",
+      "tool_calls": [
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "payment-service",
+            "minutes": 15
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "minutes": 15,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 0,
+            "groups": [],
+            "concerns": []
+          }
+        }
+      ]
+    }
+  ]
+}

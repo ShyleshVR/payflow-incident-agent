@@ -1,0 +1,11 @@
+name: payouts-declined-accounts
+alert: PayoutsFailing
+recording: PayoutsFailing-declined-accounts.json
+description: >
+  Instant payouts of two test merchants to an invalid and a closed account, declined by the bank (invalid_account, account_closed), beside an older return.
+caused_by: >
+  Recorded live on 2026-10-24 with evals/faults/payouts-failing.sh (payflow-agent investigate; the alert was already firing).
+cleaned_up_by: evals/faults/payouts-failing.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [merchant_details_wrong]
+  key_checks: [failed_payouts]

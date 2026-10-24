@@ -85,6 +85,17 @@ def test_a_quote_with_quotation_marks_inside_it_is_found():
     assert diagnosis.verify([cite("processor_errors", 'role "ledger_user" is not permitted to log in')], evidence)[0] == []
 
 
+def test_a_quote_written_with_typographic_dashes_or_quotes_is_found():
+    # found live: gpt-oss quoted "ledger‑service" with a non-breaking hyphen (U+2011)
+    evidence = {"service_pods": {"is_error": False, "result": {"unhealthy_pods": [{"pod": "ledger-service-7d4b95fd86-ph8ps",
+                                                                                  "last_exit": "Error (exit 255), 9 min ago"}]}}}
+
+    for quote in ("ledger‑service-7d4b95fd86-ph8ps", "ledger–service", "“pod”: “ledger-service",
+                  "Error (exit 255)"):
+        assert diagnosis.verify([cite("service_pods", quote)], evidence)[1] == [], quote
+    assert diagnosis.verify([cite("service_pods", "payment‑service")], evidence)[0] == []
+
+
 def test_quotes_that_are_not_in_the_evidence_get_one_more_try_naming_them(tmp_path):
     first = OUTAGE | {"evidence": [cite("processor_errors", "Simulated outage set to 240s"), cite("processor_calls", "error rate 97%")]}
     model = ScriptedModel(["processor_calls", "processor_errors"], diagnoses=[first, OUTAGE])
@@ -242,6 +253,23 @@ def test_a_quote_made_of_several_fields_holds_when_every_part_is_in_the_result()
     elided = cite("processor_pods", "Waiting: CrashLoopBackOff ... restarts: 4")
 
     assert diagnosis.verify([joined, trimmed, elided], SEVERAL) == ([joined, trimmed, elided], [])
+
+
+def test_a_long_log_line_quoted_without_a_sentence_from_its_middle_holds():
+    # found live: the model left out "Later events ... resolved." and its quote was cut at the limit mid-word
+    event = "Outbox event 35991208-1f3a-4b8b-a31b-81ace24ff7c7 (PAYMENT_CREATED, aggregate da54f2f2-694e-4354-af2a-bb2cadc25ed9)"
+    error = "error=RecordTooLargeException: The message is 1300485 bytes when serialized which is larger than 1048576"
+    line = (f"{event} can never be published and was parked as FAILED. Later events for this aggregate are held until it "
+            f"is resolved. {error}")
+    evidence = {"service_errors": {"is_error": False, "result": {"groups": [{"message": line}]}}}
+    dropped = f"can never be published and was parked as FAILED. {error}"
+    cut = f"{event} can never be published and was parked as FAILED. {error}"[:prompts.MAX_QUOTE_CHARS]     # as live
+    mid_word = f"aggregate da54f2f2-694e-4354-af2a-bb2cadc25ed9) can never be published and was parked as FAILED. {error}"[
+        :prompts.MAX_QUOTE_CHARS]                                                                           # ends "than 1048"
+    assert len(cut) == len(mid_word) == prompts.MAX_QUOTE_CHARS and not mid_word.endswith(" ")
+
+    assert diagnosis.verify([cite("service_errors", q) for q in (dropped, cut, mid_word)], evidence)[1] == []
+    assert diagnosis.verify([cite("service_errors", "parked as FAILED. error=SerializationException")], evidence)[0] == []
 
 
 def test_one_part_that_is_not_in_the_result_fails_the_whole_quote():
@@ -504,3 +532,19 @@ def test_the_screening_answer_can_only_quote_checks_that_returned_outside_text()
     assert diagnosis.outside_texts({"processor_errors": {"tool": "get_recent_errors", "is_error": False, "result": NOISY_ERRORS},
                                     "processor_calls": {"tool": "get_dependency_status", "is_error": False, "result": CALLS}}) == [
         ("processor_errors", "Simulated outage set to 240s"), ("processor_errors", f"Authorization rejected: {PLANTED}")]
+
+
+def test_a_quote_cut_by_the_answers_length_limit_counts_without_its_cut_word():
+    from agent import prompts
+    line = ('Reconciliation of 2026-10-22 failed: org.springframework.web.client.HttpServerErrorException$InternalServerError: '
+            '500 Internal Server Error on GET request for "http://processor-simulator:8086/v1/reports/settlement/authorizations"')
+    evidence = {"logs": {"tool": "get_recent_errors", "arguments": {}, "is_error": False,
+                         "result": {"groups": [{"message": line}], "concerns": []}}}
+    cut = (line[:prompts.MAX_QUOTE_CHARS - 2] + "ts")[:prompts.MAX_QUOTE_CHARS]     # the last word mangled at the cut
+    assert len(cut) == prompts.MAX_QUOTE_CHARS and cut not in line
+
+    verified, unverified = diagnosis.verify([{"check": "logs", "quote": cut}], evidence)
+    assert verified and not unverified
+    # a shorter quote gets no such leeway: it was not cut by the limit
+    short = line[:120] + "repts"
+    assert diagnosis.verify([{"check": "logs", "quote": short}], evidence)[1]

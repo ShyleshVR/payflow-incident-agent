@@ -1,0 +1,11 @@
+name: consumer-lag-ledger-down
+alert: KafkaConsumerLag
+recording: KafkaConsumerLag-ledger-down.json
+description: >
+  The ledger scaled to zero under payment traffic: nothing reads ledger-commands.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/service-down.sh ledger-service zero, under traffic).
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [consumer_not_running]
+  key_checks: [consumer_pods]

@@ -1,0 +1,11 @@
+name: service-down-not-schedulable
+alert: ServiceDown
+recording: ServiceDown-not-schedulable.json
+description: >
+  reconciliation-service asked for 64 GiB of memory: its pods stay Pending, the scheduler cannot place them.
+caused_by: >
+  Recorded live on 2026-10-23 by the agent's service (evals/faults/service-down.sh).
+cleaned_up_by: evals/faults/service-down.sh stop (and, for not-schedulable, PayFlow's overlay applied again).
+expected:
+  root_causes: [not_schedulable]
+  key_checks: [service_pods]

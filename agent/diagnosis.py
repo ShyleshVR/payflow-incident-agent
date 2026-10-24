@@ -13,6 +13,7 @@ leaves fields out. Every part must still be in the result, word for word; only t
 forgiven.
 """
 import re
+from collections import Counter
 
 from agent import prompts, runbooks
 
@@ -22,6 +23,12 @@ MIN_QUOTE_CHARS = 3
 # that says role "x" is written role \"x\" in the result's text, and must still match. Single
 # quotes too: a model may write message: 'Simulated outage set to 240s'.
 _PUNCTUATION = re.compile("[\\s\"'{}\\[\\],:\\\\]+")
+# Typography a model writes where the evidence has the plain character: gpt-oss quoted
+# "ledger‑service" with a non-breaking hyphen (U+2011). Dashes become "-", curly quotes plain ones,
+# non-breaking spaces spaces.
+_TYPOGRAPHY = str.maketrans({**dict.fromkeys("‐‑‒–—―−", "-"),
+                             **dict.fromkeys("‘’", "'"), **dict.fromkeys("“”", '"'),
+                             **dict.fromkeys("  ", " ")})
 # Per tool, the fields of its result that can carry text from outside PayFlow's operators: what a
 # service logged (a log line can quote a request), the cause of an error, and what a partner
 # answered, kept as a saga's error or step detail. Everything else in a result (counts, states,
@@ -30,9 +37,12 @@ OUTSIDE_TEXT_FIELDS = {
     "get_recent_errors": frozenset({"message", "cause"}),
     "list_sagas_needing_attention": frozenset({"last_error"}),
     "get_saga": frozenset({"last_error", "detail"}),
+    # a failed run's error is Java's text, which can carry a remote service's answer
+    "get_reconciliation": frozenset({"last_error"}),
 }
-# Where a quote made of several pieces is taken apart: at commas, and at "..." for something left out.
-_JOINS = re.compile(r",|\.{3}|\u2026")
+# Where a quote made of several pieces is taken apart: at commas, at "..." for something left out,
+# and at the end of a sentence (a model quoting a long log line drops a sentence from its middle).
+_JOINS = re.compile(r",|\.{3}|\u2026|(?<=\.)\s")
 
 
 def verify(citations: list[dict], evidence: dict[str, dict]) -> tuple[list[dict], list[dict]]:
@@ -92,8 +102,16 @@ def _holds(citation: dict, evidence: dict[str, dict]) -> bool:
     shown = _plain(prompts.shown(item))
     if _plain(quote) in shown:
         return True
+    # A quote as long as the answer's shape allows was cut there by that limit, often in the middle
+    # of a word ("/v1/repts" for "/v1/reports"): the cut word is ours, what comes before it must be there.
+    if len(quote) >= prompts.MAX_QUOTE_CHARS and " " in _plain(quote):
+        head = _plain(quote).rsplit(" ", 1)[0]
+        if len(head) >= MIN_QUOTE_CHARS and head in shown:
+            return True
     parts = [_plain(part) for part in _JOINS.split(quote)]
     parts = [part for part in parts if part]
+    if len(quote) >= prompts.MAX_QUOTE_CHARS and parts and " " in parts[-1]:
+        parts[-1] = parts[-1].rsplit(" ", 1)[0]      # cut by the limit, as above
     # each part on its own must be long enough to mean something, like a whole quote
     return len(parts) > 1 and all(len(part) >= MIN_QUOTE_CHARS and part in shown for part in parts)
 
@@ -101,20 +119,31 @@ def _holds(citation: dict, evidence: dict[str, dict]) -> bool:
 def _plain(text: str) -> str:
     """Text reduced to its words and values, so that a quote matches however the model spaced or
     punctuated it: '"unanswered_percent": 91.5' and 'unanswered_percent 91.5' are the same quote."""
-    return " ".join(_PUNCTUATION.sub(" ", text).lower().split())
+    return " ".join(_PUNCTUATION.sub(" ", text.translate(_TYPOGRAPHY)).lower().split())
 
 
-def unsupported(answer: dict, verified: list[dict], evidence: dict[str, dict], runbook: dict) -> list[str]:
+def unsupported(answer: dict, verified: list[dict], evidence: dict[str, dict], runbook: dict,
+                sorted_by_code: list[dict] | None = None) -> list[str]:
     """Why the answer's cause cannot stand on this evidence, one sentence per reason; empty when
-    it can (or the runbook sets no rule for it). Two rules, both from the runbook:
+    it can (or the runbook sets no rule for it). Three rules, all from the runbook:
     - shown_by: a verified quote must come from a check that can show the cause and found something;
     - requires_clear: some causes also need checks to have run and found nothing. "The processor
       cannot be reached" means something only when the processor itself looks fine; when its pod
-      status or health failed, or shows a problem, payment-service's failed calls say nothing more."""
+      status or health failed, or shows a problem, payment-service's failed calls say nothing more;
+    - sorted by code: where code has already sorted what the alert is about into causes (parked
+      sagas by their codes, failed days by their errors: sorted_by_code, rows with a "cause"), a
+      cause that none of them has cannot be the cause. Seen: a model whose own reasoning said
+      partner_rejected answered processor_no_answer, while no saga had parked for lack of an answer."""
     cause = next((item for item in runbook["causes"] if item["name"] == answer["root_cause"]), None)
     if cause is None:
         return []
     reasons = []
+    if sorted_by_code and cause["name"] in _causes_code_sorts(runbook):
+        found = Counter(row["cause"] for row in sorted_by_code if row.get("cause"))
+        if cause["name"] not in found:
+            counts = ", ".join(f"{count} {name}" for name, count in found.most_common()) or "none of a known cause"
+            reasons.append(f"{cause['name']} is not the cause of any of them: code sorted them by what PayFlow recorded "
+                           f"(each saga's code, or each day's error) into {counts}.")
     missing = not_shown(answer, verified, evidence, runbook)
     if missing:
         reasons.append(f"{cause['name']} is shown only by {', '.join(missing)}, and only when the check found something "
@@ -125,6 +154,10 @@ def unsupported(answer: dict, verified: list[dict], evidence: dict[str, dict], r
         reasons.append(f"{cause['name']} also needs {', '.join(cause['requires_clear'])} to have run and found nothing, "
                        f"but {'; '.join(not_clear)}.")
     return reasons
+
+
+def _causes_code_sorts(runbook: dict) -> set[str]:
+    return set(runbook.get("parking_codes", {})) | set(runbook.get("error_sources", {}))
 
 
 def _why_not_clear(item: dict | None) -> str:

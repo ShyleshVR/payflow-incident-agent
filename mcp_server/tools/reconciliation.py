@@ -229,3 +229,37 @@ def _shorten(text: str | None) -> str | None:
         return None
     text = " ".join(text.split())
     return text if len(text) <= MAX_TEXT else text[:MAX_TEXT - 1] + "…"
+
+
+# ---- every day that has no completed run (read by the agent's code)
+
+# Long enough for the host and path of the source that did not answer, which come late in Java's text.
+FAILED_ERROR_TEXT = 400
+
+
+class FailedDay(BaseModel):
+    date: str
+    failed_runs: int = Field(description="Runs of this day that failed")
+    last_error: str | None = Field(description="Of its most recent failed run, as PayFlow recorded it")
+    last_failed_hours_ago: float
+
+
+class FailedDays(BaseModel):
+    days: list[FailedDay] = Field(description="Days with no completed run whose newest run failed, newest first")
+    days_read: int
+
+
+def failed(runs_by_day: dict[date, list[dict]], now: datetime) -> FailedDays:
+    """Today and the overview's days: those no run has reconciled, and whose newest run failed (not
+    one still running). A day reconciled once and failed in a later manual run is reconciled."""
+    listed = []
+    for day in sorted(runs_by_day, reverse=True):
+        runs = runs_by_day[day]
+        if not runs or _latest_completed(runs) is not None or _newest(runs)["status"] != "FAILED":
+            continue
+        newest = _newest([run for run in runs if run["status"] == "FAILED"])
+        error = " ".join((newest.get("error") or "").split()) or None
+        listed.append(FailedDay(date=day.isoformat(), failed_runs=sum(run["status"] == "FAILED" for run in runs),
+                                last_error=None if error is None else error[:FAILED_ERROR_TEXT],
+                                last_failed_hours_ago=round(_hours_between(newest["startedAt"], now), 2)))
+    return FailedDays(days=listed, days_read=len(runs_by_day))

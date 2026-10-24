@@ -79,11 +79,17 @@ def test_every_check_of_every_runbook_is_a_real_tool_call_with_valid_arguments()
     names = runbooks.available(config.RUNBOOKS_DIR)
 
     assert "ProcessorCircuitOpen" in names
+    # a check that names a label (ServiceDown's "{job}") is tried with each value the alert can carry
+    label_values = {"job": ["payment-service", "ledger-service", "api-gateway", "processor-simulator"],
+                    "application": ["payment-service", "payout-service"], "pod": ["payment-service-7d9c8b6f5-abcde"]}
     for name in names:
-        for check in runbooks.load(name, config.RUNBOOKS_DIR).checks:
-            assert check.tool in tools, f"{name}.md: check {check.name} uses a tool that does not exist: {check.tool}"
-            # the tool's own schema decides: a service that does not exist, a missing argument, a wrong type
-            jsonschema.validate(check.arguments, tools[check.tool])
+        loaded = runbooks.load(name, config.RUNBOOKS_DIR).as_dict()
+        for value_index in range(4):
+            about = {label: values[min(value_index, len(values) - 1)] for label, values in label_values.items()}
+            for check in runbooks.resolve(loaded, [{"about": about}])["checks"]:
+                assert check["tool"] in tools, f"{name}.md: check {check['name']} uses a tool that does not exist: {check['tool']}"
+                # the tool's own schema decides: a service that does not exist, a missing argument, a wrong type
+                jsonschema.validate(check["arguments"], tools[check["tool"]])
 
 
 def test_the_schema_check_above_would_catch_a_service_that_does_not_exist():
@@ -156,10 +162,10 @@ def test_the_runbook_as_it_was_used_is_in_the_trace_and_the_report(tmp_path):
 
 
 def test_an_alert_without_a_runbook_is_refused_before_anything_is_asked_or_written(tmp_path, monkeypatch, capsys):
-    tools = Firing({**CIRCUIT_OPEN, "alert": "KafkaConsumerLag"})
+    tools = Firing({**CIRCUIT_OPEN, "alert": "NoSuchAlert"})
 
-    with pytest.raises(runbooks.NoRunbook, match="No runbook for KafkaConsumerLag yet"):
-        asyncio.run(run.investigate("KafkaConsumerLag", tools, ScriptedModel(), tmp_path))
+    with pytest.raises(runbooks.NoRunbook, match="No runbook for NoSuchAlert yet"):
+        asyncio.run(run.investigate("NoSuchAlert", tools, ScriptedModel(), tmp_path))
 
     assert tools.asked == []
     assert list(tmp_path.iterdir()) == []
@@ -168,8 +174,9 @@ def test_an_alert_without_a_runbook_is_refused_before_anything_is_asked_or_writt
         return await run.investigate(alert_name, tools, ScriptedModel(), runs_dir)
 
     monkeypatch.setattr(payflow_agent, "investigate_live", refused)
-    assert payflow_agent.main(["investigate", "KafkaConsumerLag"]) == payflow_agent.NO_RUNBOOK
-    assert "No runbook for KafkaConsumerLag yet. Runbooks exist for: ProcessorCircuitOpen, SagaRequiresAttention." in capsys.readouterr().out
+    assert payflow_agent.main(["investigate", "NoSuchAlert"]) == payflow_agent.NO_RUNBOOK
+    known = ", ".join(runbooks.available(config.RUNBOOKS_DIR))
+    assert f"No runbook for NoSuchAlert yet. Runbooks exist for: {known}." in capsys.readouterr().out
 
 
 def test_a_replay_runs_with_the_runbook_as_it_is_now_not_as_it_was_recorded(tmp_path):

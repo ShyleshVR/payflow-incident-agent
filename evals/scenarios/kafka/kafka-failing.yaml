@@ -1,0 +1,11 @@
+name: kafka-failing
+alert: KafkaUnreachable
+recording: KafkaUnreachable-kafka-failing.json
+description: >
+  Derived. kafka-0 is running and ready, but the broker fails every write to its disk (KafkaStorageException in its own log).
+caused_by: >
+  python -m evals.derive (evals/derive_alerts.py), from KafkaUnreachable-kafka-scaled-to-zero.json.
+cleaned_up_by: evals/faults/kafka-down.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [kafka_unhealthy]
+  key_checks: [kafka_errors]

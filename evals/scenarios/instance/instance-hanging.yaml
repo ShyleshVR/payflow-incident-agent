@@ -1,0 +1,11 @@
+name: instance-hanging
+alert: InstanceDown
+recording: InstanceDown-hanging.json
+description: >
+  Derived. One pod runs and does not restart, but does not answer (1 of 2 up); its pool warns of starved threads.
+caused_by: >
+  python -m evals.derive (evals/derive_more.py), from InstanceDown-one-pod-crashing.json.
+cleaned_up_by: The fault script's stop (nothing to undo for a derived one).
+expected:
+  root_causes: [instance_hanging]
+  key_checks: [service_health, service_errors]

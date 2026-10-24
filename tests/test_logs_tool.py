@@ -201,3 +201,9 @@ def test_when_kubernetes_does_not_answer_the_tool_says_so(monkeypatch):
 
     assert result.is_error
     assert "Kubernetes did not answer" in result.content[0].text
+
+
+def test_a_java_objects_identity_hash_is_masked_so_one_error_stays_one_kind():
+    lines = [f"Exception thrown when sending a message with key='{key}' and payload='com.shylesh.payment_service.event.EventEnvelope@{hash_}' to topic payment-created:"
+             for key, hash_ in (("69ffb9aa-c601-4f9a-80bb-c55b83af82e0", "12004286"), ("0cb177ba-cd8b-4f0a-9c6f-b6b51b9a6bf9", "677c2876"))]
+    assert logs.template(lines[0]) == logs.template(lines[1])

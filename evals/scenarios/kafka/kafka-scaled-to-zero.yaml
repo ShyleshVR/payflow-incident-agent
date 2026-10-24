@@ -1,0 +1,11 @@
+name: kafka-scaled-to-zero
+alert: KafkaUnreachable
+recording: KafkaUnreachable-kafka-scaled-to-zero.json
+description: >
+  Kafka's statefulset was scaled to zero: no broker; the services' Kafka clients log that they cannot connect.
+caused_by: >
+  Recorded live on 2026-10-23 by the agent's service (evals/faults/kafka-down.sh).
+cleaned_up_by: evals/faults/kafka-down.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [kafka_not_running]
+  key_checks: [kafka_pods]

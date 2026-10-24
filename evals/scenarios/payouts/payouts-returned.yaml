@@ -1,0 +1,11 @@
+name: payouts-returned
+alert: PayoutsFailing
+recording: PayoutsFailing-returned.json
+description: >
+  Derived. Five paid payouts to different merchants came back from the bank (account_frozen); others were paid.
+caused_by: >
+  python -m evals.derive (evals/derive_alerts.py), from PayoutsFailing-declined-accounts.json.
+cleaned_up_by: evals/faults/payouts-failing.sh stop (nothing to undo for a derived one).
+expected:
+  root_causes: [returned_by_bank]
+  key_checks: [failed_payouts]

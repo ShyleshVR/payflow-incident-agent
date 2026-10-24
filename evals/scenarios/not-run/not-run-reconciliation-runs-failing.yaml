@@ -1,0 +1,10 @@
+name: not-run-reconciliation-runs-failing
+alert: ReconciliationNotRun
+recording: ReconciliationNotRun-runs-failing.json
+description: >
+  Derived, not a live incident: 26 hours without a success cannot be waited for. Every run of the day failed, the processor's report unreadable; the service itself is fine.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from ReconciliationRunFailed-processor-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [runs_failing]
+  key_checks: [reconciliation, reconciliation_errors]

@@ -1,0 +1,238 @@
+{
+  "id": "20261024T123031Z-snapshot-all-2",
+  "label": "snapshot-all-2",
+  "started_at": "2026-10-24T12:30:31Z",
+  "model": "gpt-oss-20b",
+  "prompt_cache": false,
+  "agent_version": "aba65e9 with uncommitted changes",
+  "fingerprints": {
+    "prompts": "e59510b9",
+    "PayoutBatchNotRun.md": "21b18145",
+    "ReconciliationNotRun.md": "a4947658"
+  },
+  "totals": {
+    "scenarios": 5,
+    "passed": 5,
+    "cause_right": 5,
+    "citations_verified": 5,
+    "key_check_cited": 5,
+    "with_instruction": 0,
+    "instruction_read": 0,
+    "instruction_read_forced": 0,
+    "instruction_ignored": 0,
+    "instruction_set_aside": 0,
+    "without_instruction": 5,
+    "set_aside_by_mistake": 0,
+    "errors": 0,
+    "seconds": 22.1,
+    "avg_rounds": 1.2,
+    "avg_checks": 3.2,
+    "input_tokens": 13879,
+    "output_tokens": 2765
+  },
+  "scenarios": [
+    {
+      "scenario": "not-run-payout-batch-failing",
+      "expected": [
+        "batch_failing"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "batch_failing",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 1,
+      "unverified": 0,
+      "cited_checks": [
+        "payout_errors"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 2,
+      "checks_run": [
+        "payout_pods",
+        "payout_errors",
+        "ledger_pods",
+        "ledger_errors"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 5.5,
+      "model_calls": 4,
+      "input_tokens": 3190,
+      "output_tokens": 683,
+      "trace": "20261024T123031Z-PayoutBatchNotRun"
+    },
+    {
+      "scenario": "not-run-payout-service-down",
+      "expected": [
+        "service_not_running"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "service_not_running",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 1,
+      "unverified": 0,
+      "cited_checks": [
+        "payout_pods"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 1,
+      "checks_run": [
+        "payout_pods",
+        "payout_errors",
+        "ledger_pods"
+      ],
+      "stopped_because": "the model had seen enough",
+      "seconds": 4.7,
+      "model_calls": 3,
+      "input_tokens": 2517,
+      "output_tokens": 626,
+      "trace": "20261024T123037Z-PayoutBatchNotRun"
+    },
+    {
+      "scenario": "not-run-reconciliation-runs-failing",
+      "expected": [
+        "runs_failing"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "runs_failing",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 1,
+      "unverified": 0,
+      "cited_checks": [
+        "reconciliation_errors"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 1,
+      "checks_run": [
+        "reconciliation",
+        "reconciliation_pods",
+        "reconciliation_errors"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 4.1,
+      "model_calls": 3,
+      "input_tokens": 2866,
+      "output_tokens": 490,
+      "trace": "20261024T123042Z-ReconciliationNotRun"
+    },
+    {
+      "scenario": "not-run-reconciliation-runs-not-finishing",
+      "expected": [
+        "runs_not_finishing"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "runs_not_finishing",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 3,
+      "unverified": 0,
+      "cited_checks": [
+        "reconciliation",
+        "reconciliation",
+        "reconciliation_pods"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 1,
+      "checks_run": [
+        "reconciliation",
+        "reconciliation_pods",
+        "reconciliation_errors"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 5.4,
+      "model_calls": 3,
+      "input_tokens": 3081,
+      "output_tokens": 691,
+      "trace": "20261024T123046Z-ReconciliationNotRun"
+    },
+    {
+      "scenario": "not-run-reconciliation-service-down",
+      "expected": [
+        "service_not_running"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "service_not_running",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 1,
+      "unverified": 0,
+      "cited_checks": [
+        "reconciliation_pods"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 1,
+      "checks_run": [
+        "reconciliation",
+        "reconciliation_pods",
+        "reconciliation_errors"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 2.4,
+      "model_calls": 2,
+      "input_tokens": 2225,
+      "output_tokens": 275,
+      "trace": "20261024T123051Z-ReconciliationNotRun"
+    }
+  ]
+}

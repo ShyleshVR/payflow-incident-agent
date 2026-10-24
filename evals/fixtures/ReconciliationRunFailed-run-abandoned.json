@@ -1,0 +1,324 @@
+{
+  "id": "derived-ReconciliationRunFailed-run-abandoned",
+  "alert_name": "ReconciliationRunFailed",
+  "derived_from": "ReconciliationRunFailed-ledger-down.json",
+  "derived": "The run's pod was killed for memory (OOMKilled) in the middle of a run; a later attempt marked it abandoned and took the day over, and that run is still going. Nothing to run again.",
+  "steps": [
+    {
+      "step": "intake",
+      "tool_calls": [
+        {
+          "tool": "list_active_alerts",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "count": 2,
+            "alerts": [
+              {
+                "alert": "PayoutsFailing",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 29,
+                "summary": "4.031160555008977 payouts failed or were returned in the last hour"
+              },
+              {
+                "alert": "ReconciliationRunFailed",
+                "severity": "warning",
+                "about": {},
+                "firing_for_minutes": 0,
+                "summary": "A reconciliation run failed"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_reconciliation",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "days": [
+              {
+                "date": "2026-10-22",
+                "status": "running",
+                "discrepancies": null,
+                "runs": 2
+              },
+              {
+                "date": "2026-10-21",
+                "status": "clean",
+                "discrepancies": 0,
+                "runs": 1
+              },
+              {
+                "date": "2026-10-20",
+                "status": "clean",
+                "discrepancies": 0,
+                "runs": 1
+              },
+              {
+                "date": "2026-10-19",
+                "status": "clean",
+                "discrepancies": 0,
+                "runs": 1
+              },
+              {
+                "date": "2026-10-18",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-17",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              },
+              {
+                "date": "2026-10-16",
+                "status": "not_reconciled",
+                "discrepancies": null,
+                "runs": 0
+              }
+            ],
+            "detail": {
+              "date": "2026-10-22",
+              "status": "running",
+              "trigger": null,
+              "finished_hours_ago": null,
+              "payments_checked": null,
+              "payments_matched": null,
+              "payments_pending": null,
+              "payouts_checked": null,
+              "payouts_matched": null,
+              "payouts_pending": null,
+              "discrepancies": null,
+              "by_type": [],
+              "examples_read": true,
+              "failed_runs": 1,
+              "last_error": "Abandoned: the run stopped reporting (its pod was probably killed); taken over by a new run",
+              "running_for_minutes": 2
+            },
+            "hours_since_last_completed_run": 11.5,
+            "concerns": [
+              "2026-10-18 is not reconciled: no run was started for it",
+              "2026-10-17 is not reconciled: no run was started for it",
+              "2026-10-16 is not reconciled: no run was started for it"
+            ]
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "processor-simulator"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "processor-simulator",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_recent_errors",
+          "arguments": {
+            "workload": "reconciliation-service",
+            "minutes": 60
+          },
+          "is_error": false,
+          "result": {
+            "workload": "reconciliation-service",
+            "minutes": 60,
+            "pods_read": 2,
+            "error_lines": 0,
+            "warning_lines": 1,
+            "groups": [
+              {
+                "level": "WARN",
+                "logger": "c.s.r.service.ReconciliationService",
+                "message": "Run run-2026-10-22-041726 of 2026-10-22 was last seen at 2026-10-23T04:20:26: abandoned, taking the day over",
+                "cause": null,
+                "count": 1,
+                "pods": 1,
+                "last_seen_minutes_ago": 1,
+                "in_crashed_container": false
+              }
+            ],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "gather",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "reconciliation-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "reconciliation-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 1,
+            "unhealthy_pods": [
+              {
+                "pod": "reconciliation-service-7d9c8b6f5-1x1q",
+                "state": "Running, restarted in the last 15 minutes",
+                "restarts": 1,
+                "last_exit": "OOMKilled (exit 137), 4 min ago",
+                "detail": null
+              }
+            ],
+            "recent_warnings": [],
+            "concerns": [
+              "1 pod(s): Running, restarted in the last 15 minutes"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "step": "record_unchosen",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payment-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payment-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "payout-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "payout-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "merchant-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "merchant-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        }
+      ]
+    },
+    {
+      "step": "sort_days",
+      "tool_calls": [
+        {
+          "tool": "list_failed_reconciliations",
+          "arguments": {},
+          "is_error": false,
+          "result": {
+            "days": [],
+            "days_read": 8
+          }
+        }
+      ]
+    },
+    {
+      "step": "rerun",
+      "tool_calls": [
+        {
+          "tool": "get_pod_status",
+          "arguments": {
+            "workload": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "workload": "ledger-service",
+            "kind": "Deployment",
+            "pods_wanted": 2,
+            "pods_ready": 2,
+            "healthy_pods": 2,
+            "unhealthy_pods": [],
+            "recent_warnings": [],
+            "concerns": []
+          }
+        },
+        {
+          "tool": "get_service_health",
+          "arguments": {
+            "service": "ledger-service"
+          },
+          "is_error": false,
+          "result": {
+            "service": "ledger-service",
+            "instances_up": 2,
+            "instances_expected": 2,
+            "minutes_since_last_start": 0,
+            "requests_per_second": 0.0,
+            "server_error_percent": 0.0,
+            "avg_response_ms": null,
+            "db_connections_waiting": 0,
+            "cpu_cores_used": 0.18,
+            "concerns": [
+              "an instance started 0 minute(s) ago: a restart or a new pod"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

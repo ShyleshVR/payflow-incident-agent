@@ -37,6 +37,9 @@ class Investigation(TypedDict, total=False):
     # For an alert about parked sagas: code's sorting of them (agent/sagas.py): the retry list,
     # those that need a person, and any not read.
     sagas: dict
+    # For a failed reconciliation: code's sorting of the failed days (agent/reruns.py): the rerun
+    # list, those that need a person, or why they could not be read.
+    days: dict
     # The runbook's next step for the cause found ({"cause", "step"}), or None; and what a person
     # decided about it ({"decision": approved | rejected | lapsed, "by", "at", "note"}), or None.
     proposal: dict | None

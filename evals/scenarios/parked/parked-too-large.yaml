@@ -1,0 +1,14 @@
+name: parked-too-large
+alert: OutboxMessageParked
+recording: OutboxMessageParked-too-large.json
+description: >
+  A PAYMENT_CREATED message of 1.3 MB in payment-service's outbox (Kafka takes 1 MB), for a
+  payment that does not exist: payment-service's publisher got RecordTooLargeException, parked it
+  as FAILED and logged why.
+caused_by: >
+  Recorded live on 2026-10-24 by the agent's service (evals/faults/outbox-message-parked.sh start
+  too-large), no traffic.
+cleaned_up_by: evals/faults/outbox-message-parked.sh stop
+expected:
+  root_causes: [too_large]
+  key_checks: [service_errors]

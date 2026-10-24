@@ -78,7 +78,7 @@ def test_a_scenario_is_checked_against_its_runbook_and_recording_when_loaded(tmp
 
     for changed, why in (
             ({"name": "something-else"}, "it says name: something-else"),
-            ({"alert": "KafkaConsumerLag"}, "No runbook for KafkaConsumerLag yet"),
+            ({"alert": "NoSuchAlert"}, "No runbook for NoSuchAlert yet"),
             ({"expected": {"key_checks": ["processor_errors"]}}, "expected needs root_causes"),
             ({"expected": {"root_causes": ["cosmic_rays"], "key_checks": ["processor_errors"]}}, "has no cause ['cosmic_rays']"),
             ({"expected": {"root_causes": ["processor_outage"], "key_checks": ["vibes"]}}, "has no check ['vibes']"),

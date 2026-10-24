@@ -1,0 +1,10 @@
+name: not-run-payout-service-down
+alert: PayoutBatchNotRun
+recording: PayoutBatchNotRun-service-down.json
+description: >
+  Derived, not a live incident: 26 hours without a success cannot be waited for. payout-service has had no pod for over a day: no batch was scheduled.
+caused_by: python -m evals.derive (evals/derive_alerts.py), from PayoutsFailing-declined-accounts.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [service_not_running]
+  key_checks: [payout_pods]

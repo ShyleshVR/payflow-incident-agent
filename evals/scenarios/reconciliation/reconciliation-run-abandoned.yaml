@@ -1,0 +1,11 @@
+name: reconciliation-run-abandoned
+alert: ReconciliationRunFailed
+recording: ReconciliationRunFailed-run-abandoned.json
+description: >
+  Derived, not a live incident. The run's pod was OOMKilled mid-run; a later attempt took the day over and is still running. Nothing to run again.
+caused_by: python -m evals.derive (evals/derive_reconciliation.py), from ReconciliationRunFailed-ledger-down.json.
+cleaned_up_by: Nothing to undo.
+expected:
+  root_causes: [run_abandoned]
+  key_checks: [reconciliation, reconciliation_errors, reconciliation_pods]
+  rerun: []

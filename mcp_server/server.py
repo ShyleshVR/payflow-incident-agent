@@ -13,7 +13,17 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server import config
 from mcp_server.clients import alertmanager, kube, payflow, prometheus
-from mcp_server.tools import alerts, dependencies, health, logs, messaging, pods, reconciliation, sagas
+from mcp_server.tools import (
+    alerts,
+    dependencies,
+    health,
+    logs,
+    messaging,
+    payouts,
+    pods,
+    reconciliation,
+    sagas,
+)
 
 server = MCPServer(
     "payflow",
@@ -189,6 +199,33 @@ async def list_parked_sagas(service: Literal["payment-service", "payout-service"
 
         views = await asyncio.gather(*(view(item) for item in sagas.parked_to_read(service, answer)))
     return sagas.parked(service, answer, list(views))
+
+
+@server.tool()
+async def list_failed_reconciliations() -> reconciliation.FailedDays:
+    """Every business day of the last week (today included) that no reconciliation run has
+    reconciled, and whose newest run failed: its failed runs and the last one's error, which names
+    the source that did not answer. For the agent's own code, which decides which days may be run
+    again; not one of a runbook's checks. Read-only, like every tool here."""
+    now = alerts.utc_now()
+    days = reconciliation.days_to_read(now.date(), None)
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        answers = await asyncio.gather(*(payflow.get(reconciliation.RUNS, {"date": day.isoformat()}) for day in days))
+    return reconciliation.failed(dict(zip(days, answers, strict=True)), now)
+
+
+@server.tool()
+async def get_failed_payouts(hours: int = payouts.DEFAULT_HOURS) -> payouts.FailedPayouts:
+    """The payouts (money sent from a merchant's balance to its bank account) that failed or came
+    back from the bank in the last `hours` (default 1, at most 48), grouped by status and failure
+    code, with a few examples each, and how many were paid meanwhile. invalid_account,
+    account_closed and account_frozen are the bank's answer about the merchant's account;
+    insufficient_payable_balance is PayFlow's ledger. Use it for the alert PayoutsFailing.
+    `concerns` lists what looks wrong; empty means none failed or came back."""
+    window = payouts.clamp_hours(hours)
+    with reaching("PayFlow", config.PAYFLOW_URL):
+        listed = await payflow.get(payouts.PAYOUTS, {"limit": payouts.READ})
+    return payouts.summarise(listed, window, alerts.utc_now())
 
 
 @server.tool()

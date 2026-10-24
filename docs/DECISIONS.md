@@ -61,8 +61,10 @@ foresaw); a "set aside" field first in every answer (it made the diagnoses worse
 
 Pass or fail is computed: the cause, the quotes, the key check, and for planted instructions,
 what they got. No model judges a model. The model server's prompt cache is off by default: with
-it on, the same prompts scored 12, 10 and 9 of 13. Scenarios come in three sets: tuned on, held
-out, and a fresh set frozen before any model ran it, for comparing models fairly.
+it on, the same prompts scored 12, 10 and 9 of 13. With it off a run repeats exactly within one
+model-server process; between processes on different days the same prompts have scored up to two
+scenarios apart, for no known reason, so comparisons are made within one process. Scenarios come
+in sets: tuned on, held out, and sets frozen before any model ran them.
 
 ## 9. gpt-oss-20b as the default model
 
@@ -147,3 +149,120 @@ would ever be retried after a quiet-time outage. Now only an open breaker blocks
 to the calls and the health, and a retry is then one of the trial calls it is waiting for.
 *Turned down:* keeping "closed only" and waiting for traffic; allowing half-open only after
 answered trial calls (the same wait, without traffic).
+
+## 18. A second action: running a failed day's reconciliation again
+
+`ReconciliationRunFailed` is the third runbook, chosen next because PayFlow really had it: the
+hourly out-of-memory crash of 2026-10-11 was found through it. Its action is the operator's
+manual run (`POST /api/v1/reconciliation/runs`), through the same operator login with one more
+scope, `reconciliation:admin`. A run reads and compares and moves no money, so running a day
+again is always safe; the hourly catch-up would get to it within the hour, and only for the last
+3 days. The action saves that hour and covers older days.
+*Turned down:* leaving it to the catch-up (no action at all; the runbook would only explain).
+
+## 19. Code sorts the failed days by the source their error names, and stops at three failures
+
+As with the parked sagas, code makes the list: each day no run has reconciled, and whose newest
+run failed, gets the cause of the host its error names (`ledger-service` in the URL that did not
+answer), or "Abandoned" for a run whose pod died. All known causes may be run again, but a day
+that has failed 3 times needs a person: on 2026-10-11 the processor came back after every crash,
+and every run crashed it again. Before each rerun code checks the day is still not reconciled, no
+run of it is going, and the source that failed is healthy again.
+*Turned down:* rerunning whatever failed (it would have repeated the crash every hour); the model
+choosing the days.
+
+## 20. Code checks the diagnosis against its own sorting
+
+Where code has sorted the sagas or days into causes, a diagnosed cause that none of them has is
+not accepted: the model is told the causes code found and asked once more. Seen in the evals: a
+model whose own reasoning said `partner_rejected` answered `processor_no_answer`, while no saga
+had parked for lack of an answer. Sorting therefore runs before the diagnosis, not after it.
+*Turned down:* replacing the model's cause with code's (the diagnosis would explain nothing code
+had not already counted; the model still reads the logs and pods that say why).
+
+## 21. Fixes found by a frozen set are tried on copies
+
+The saga set was frozen and run once; its weaknesses (PayFlow's own "Saga needs attention." line
+flagged as addressed to the operator) were fixed on tuning copies in `evals/scenarios/sagas-tuning`
+(copies of the affected recordings plus a live recording no frozen set uses), and the frozen set
+run once more after, reported as such. The first score stays on record.
+*Turned down:* tuning on the frozen set (its score would no longer say how the agent does on what
+it has not seen).
+
+## 22. A check may name a label of the alert
+
+`ServiceDown`, and alerts like it, are about whichever service fires them. Rather than one
+runbook per service, a check's arguments may name the alert's label (`{workload: "{job}"}`); it
+is filled in from the firing alert when the investigation starts, before the model sees the
+checks. The model still only picks checks by name; it never writes an argument. A check whose
+label no firing alert carries is left out, and the trace says so.
+*Turned down:* letting the model fill in the service (an argument it writes is one it can get
+wrong, or be talked into); one runbook per service (nine copies of one text).
+
+## 23. Most alerts get no action
+
+`ServiceDown`, `KafkaUnreachable` and `PayoutsFailing` propose a step for a person: scale a
+service back up, fix what kills its container, bring Kafka back, contact merchants. The agent
+does none of it. The plan kept restarts and scale-ups recommend-only from the start: an action
+is added only where it is safe to repeat, checked before it runs, and narrow (retrying a parked
+saga, running a reconciliation again).
+
+## 24. What the live tests found about PayFlow's own alerts is reported, not changed
+
+Two of PayFlow's alert rules miss a case, found while making the evals: `ServiceDown` never
+fires for a service whose pods run but are never ready (Prometheus scrapes a pod whether or not
+it is ready), and `KafkaUnreachable` never fires when kafka-exporter has no pods at all (its rule
+is `up == 0`, with no `absent()`, unlike `ServiceDown`'s). The runbooks say so; PayFlow's rules
+are left for a separate change.
+
+A third, found when the ledger's database login was locked (2026-10-24): the ledger keeps running
+and stays ready, but its metrics endpoint fails, because its outbox gauges query the database on
+every scrape (each waits for a connection that never comes, and the error handler cannot write
+its JSON answer to a metrics request). Prometheus then counts the ledger as down, so `ServiceDown`
+and `InstanceDown` fire for a service whose pods are alive, and the agent's messaging check says
+the ledger reports no outbox metrics. The fix belongs in PayFlow (gauges that read a value kept
+up to date in the background, so a scrape never waits on the database); the stalled-consumer
+recording shows the behaviour as it is.
+
+## 25. A derived log line is one PayFlow could write
+
+A derived recording changes what a check returned; when that is a log line, it is a line PayFlow
+really logs: the class that logs it, at its level, in its wording, read from the service's code.
+A planted instruction goes only where text from outside PayFlow really reaches a log: the
+processor's answer, a merchant endpoint's answer, the mail provider's answer, a caller's request
+path, an error's message. Found on 2026-10-24, before the last sets' first runs: lines from
+classes that do not exist (`ChannelConfig`, payment-service's `OutboxRelay`), a "… note:" no class
+writes, an outbox failure retried that PayFlow parks at once (`RecordTooLargeException`), and an
+exception no consumer throws. Fixed in 12 recordings, the stalled consumer recorded live instead;
+the earlier runs on them do not count.
+*Turned down:* keeping them (a model can tell a line PayFlow would never write, and an eval of
+that measures the wrong thing).
+
+## 26. The log tool masks Java's identity hashes
+
+A Java object printed without its own `toString` ends in `@` and a hash (`@1a2b3c4d`) that differs
+for every object, so one error logged 1599 times was listed as 1599 kinds and pushed every other
+line out of the tool's ten. The log tool now masks `@<hash>` like ids and numbers before grouping.
+A recording made before the mask is regrouped the same way when something is derived from it.
+
+## 27. A derived recording may be of a related alert
+
+`ReconciliationNotRun` and `PayoutBatchNotRun` take a day or more to fire on their own. A failed
+reconciliation run is what one of their causes looks like, so their recordings are derived from a
+`ReconciliationRunFailed` one: the derivation names the other alert, rewrites the alert list, and
+adds the results of the checks the other runbook has that the source never ran, each built with
+the tool's own code. A rewrite may also change a firing alert's labels (a dead letter on
+`payout-events.DLT` rather than `payment-created.DLT`).
+*Turned down:* waiting a day per recording; leaving those two alerts without scenarios.
+
+## 28. A quote may drop a sentence, and its typography is made plain
+
+Two live investigations on 2026-10-24 named the right cause and were reported as "cause unknown",
+because their quotes were refused: one wrote "ledger‑service" with a non-breaking hyphen
+(U+2011), the other left the middle sentence out of a long log line, without "...", and was cut
+at the 200-character limit. Quotes are now compared with typographic dashes, quotes and spaces
+made plain, and are taken apart at the end of a sentence as well as at commas and "..."; every
+part must still be found in the result of the check the quote names, and a part cut by the limit
+is checked without its cut word.
+*Turned down:* matching quotes loosely (by similarity): a made-up number or a sentence from
+another check would then pass.
