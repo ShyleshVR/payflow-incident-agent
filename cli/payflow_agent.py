@@ -3,7 +3,8 @@
     payflow-agent investigate ProcessorCircuitOpen       # the alert must be firing now
     payflow-agent investigate --replay runs\\<id>.json    # again, from a recorded investigation
     payflow-agent list                                   # recent investigations
-    payflow-agent show latest                            # the report of one (latest, an id, or a file)
+    payflow-agent show latest                            # the report of one (latest, a trace id, or a file)
+    payflow-agent show 12                                # the service's investigation 12 (--trace: its trace)
     payflow-agent eval --label baseline                  # replay every recorded scenario and score it
     payflow-agent serve                                  # the service: Alertmanager's alerts, proposals
     payflow-agent pending                                # proposals waiting for your decision
@@ -11,11 +12,14 @@
 
 A live investigation needs the model server (scripts\\start-llm.ps1), the MCP server
 (python -m mcp_server.server) and the PayFlow cluster. A replay or an eval needs only the model server.
-Listing and showing need nothing: reports are made from the trace files in runs\\.
+Listing and showing need nothing: reports are made from the trace files in runs\\. The service's
+own investigations (by number) are asked of the service, wherever it runs (on this machine, or in
+the cluster: deploy/k8s).
 """
 import argparse
 import asyncio
 import getpass
+import json
 import sys
 from pathlib import Path
 
@@ -48,7 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     investigate.add_argument("--replay", metavar="TRACE", type=Path,
                              help="run again from the tool results recorded in this trace file")
     show = commands.add_parser("show", help="print the report of a past investigation")
-    show.add_argument("investigation", help="'latest', an investigation id, or a trace file")
+    show.add_argument("investigation", help="the service's investigation number (asks the service, wherever it runs), "
+                                            "or 'latest', a trace id or a trace file (this machine's runs/)")
+    show.add_argument("--trace", action="store_true", help="print the full trace (JSON) instead of the report")
     listing = commands.add_parser("list", help="recent investigations, newest first")
     listing.add_argument("-n", type=int, default=10, help="how many (default 10)")
     evaluate = commands.add_parser("eval", help="replay the recorded scenarios and score the results")
@@ -90,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command == "list":
         return _list(arguments.n)
     if arguments.command == "show":
-        return _show(arguments.investigation)
+        return _show(arguments.investigation, arguments.trace)
     if (arguments.alert is None) == (arguments.replay is None):
         parser.error("give an alert name, or --replay with a trace file (one of the two)")
     return _investigate(arguments)
@@ -147,12 +153,31 @@ def _eval(label: str, only: list[str] | None, which: str | None = None) -> int:
     return DONE if results["totals"]["passed"] == results["totals"]["scenarios"] else NOT_FIRING
 
 
-def _show(which: str) -> int:
+def _show(which: str, as_trace: bool = False) -> int:
+    if which.isdigit():
+        return _show_from_service(int(which), as_trace)
     path = _find(which)
     if path is None:
         print(f"No investigation {which} in {config.RUNS_DIR}. Try: payflow-agent list")
         return FAILED
-    print(report.render(traces.load(path)))
+    loaded = traces.load(path)
+    print(json.dumps(loaded, indent=2) if as_trace else report.render(loaded))
+    return DONE
+
+
+def _show_from_service(investigation_id: int, as_trace: bool) -> int:
+    """The service keeps the traces (in the cluster, on its own volume): ask it."""
+    answer = _ask_service("GET", f"/investigations/{investigation_id}" + ("/trace" if as_trace else ""))
+    if answer is None:
+        return FAILED
+    if answer.status_code != 200:
+        print(f"No investigation {investigation_id}: {answer.json().get('detail', answer.text)}")
+        return FAILED
+    if as_trace:
+        print(json.dumps(answer.json(), indent=2))   # ASCII: the same on any console, any redirect
+        return DONE
+    found = answer.json()
+    print(found["report"] or f"Investigation {investigation_id} ({found['alert_name']}) has no report yet: {found['status']}.")
     return DONE
 
 
@@ -196,7 +221,8 @@ def _ask_service(method: str, path: str, **kwargs) -> httpx.Response | None:
         with _agent_client() as client:
             return client.request(method, path, **kwargs)
     except httpx.ConnectError:
-        print(f"The agent service does not answer on port {config.AGENT_PORT}. Start it with: payflow-agent serve")
+        print(f"The agent service does not answer on port {config.AGENT_PORT}. Start it with: payflow-agent serve "
+              f"(or deploy it in the cluster: scripts/k8s-deploy.sh)")
         return None
 
 
@@ -212,7 +238,7 @@ def _pending() -> int:
     for item in reversed(waiting):
         print(f"{item['id']:>4}  {item['alert_name']}: {item['root_cause']}  (since {item['finished_at']})")
         print(f"      proposed: {item['proposal']}")
-        print(f"      report:   runs/{item['trace_id']}.md")
+        print(f"      report:   payflow-agent show {item['id']}")
     return DONE
 
 
@@ -230,7 +256,7 @@ def _decide(investigation_id: int, command: str, note: str) -> int:
     if decided["decision"] == "approved" and decided.get("to_retry"):
         print(f"The agent is carrying it out now: it checks each of the {decided['to_retry']} item(s) on the approved list "
               f"again (sagas to retry, or days to reconcile again), carries them out one at a time, and watches them. "
-              f"The report says what became of each: runs/{decided['trace_id']}.md")
+              f"The report says what became of each: payflow-agent show {investigation_id}")
     elif decided["decision"] == "approved":
         print("Nothing is carried out: this step is yours to take.")
     return DONE

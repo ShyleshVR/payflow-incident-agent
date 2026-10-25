@@ -1,0 +1,87 @@
+# The agent service (payflow-agent serve): Alertmanager's webhook, the investigations, the
+# decisions and carrying out approved ones. One replica: its state is SQLite on its own volume
+# (the investigations, the paused workflows, one trace per investigation), and Recreate makes sure
+# two pods never open it at once.
+#
+# The model is on the host (scripts/start-llm.ps1); Docker Desktop's host.docker.internal reaches it.
+# The Service is a LoadBalancer on port 8092, so `payflow-agent pending | approve | reject | show`
+# on this machine talk to it exactly as to a service started by hand.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: incident-agent-data
+  namespace: payflow-agent
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-agent
+  namespace: payflow-agent
+  labels: { app: incident-agent }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: incident-agent }
+  template:
+    metadata:
+      labels: { app: incident-agent }
+    spec:
+      serviceAccountName: incident-agent
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: incident-agent
+          image: payflow-incident-agent:local
+          imagePullPolicy: IfNotPresent
+          command: [payflow-agent, serve, --host, 0.0.0.0, --port, "8092"]
+          ports:
+            - { name: http, containerPort: 8092 }
+          env:
+            - { name: LLM_URL, value: http://host.docker.internal:8090/v1 }
+            - { name: MCP_URL, value: http://mcp-server.payflow-agent.svc.cluster.local:8091/mcp }
+            - { name: PAYFLOW_URL, value: http://api-gateway.payflow.svc.cluster.local }
+            - name: AGENT_TOKEN
+              valueFrom: { secretKeyRef: { name: incident-agent, key: AGENT_TOKEN } }
+            - name: PAYFLOW_OPERATOR_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: incident-agent, key: PAYFLOW_OPERATOR_CLIENT_SECRET } }
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: incident-agent-data }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-agent
+  namespace: payflow-agent
+spec:
+  type: LoadBalancer
+  selector: { app: incident-agent }
+  ports:
+    - { name: http, port: 8092, targetPort: http }

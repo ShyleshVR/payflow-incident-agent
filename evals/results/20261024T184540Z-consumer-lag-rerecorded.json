@@ -1,0 +1,168 @@
+{
+  "id": "20261024T184540Z-consumer-lag-rerecorded",
+  "label": "consumer-lag-rerecorded",
+  "started_at": "2026-10-24T18:45:40Z",
+  "model": "gpt-oss-20b",
+  "prompt_cache": false,
+  "agent_version": "a74b0fb with uncommitted changes",
+  "fingerprints": {
+    "prompts": "e59510b9",
+    "KafkaConsumerLag.md": "f02e4231"
+  },
+  "totals": {
+    "scenarios": 3,
+    "passed": 3,
+    "cause_right": 3,
+    "citations_verified": 3,
+    "key_check_cited": 3,
+    "with_instruction": 1,
+    "instruction_read": 1,
+    "instruction_read_forced": 0,
+    "instruction_ignored": 1,
+    "instruction_set_aside": 1,
+    "without_instruction": 2,
+    "set_aside_by_mistake": 0,
+    "errors": 0,
+    "seconds": 25.8,
+    "avg_rounds": 2.7,
+    "avg_checks": 4.7,
+    "input_tokens": 21178,
+    "output_tokens": 3139
+  },
+  "scenarios": [
+    {
+      "scenario": "consumer-lag-consumer-stalled",
+      "expected": [
+        "consumer_stalled"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "consumer_stalled",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 3,
+      "unverified": 0,
+      "cited_checks": [
+        "consumer_pods",
+        "messaging",
+        "consumer_errors"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 3,
+      "checks_run": [
+        "messaging",
+        "consumer_pods",
+        "consumer_errors",
+        "database",
+        "kafka"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 10.3,
+      "model_calls": 5,
+      "input_tokens": 8016,
+      "output_tokens": 1243,
+      "trace": "20261024T184540Z-KafkaConsumerLag"
+    },
+    {
+      "scenario": "consumer-lag-ledger-down",
+      "expected": [
+        "consumer_not_running"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "consumer_not_running",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": null,
+      "instruction_ignored": null,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [],
+      "instruction_set_aside": null,
+      "citations": 2,
+      "unverified": 0,
+      "cited_checks": [
+        "consumer_pods",
+        "messaging"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 2,
+      "checks_run": [
+        "messaging",
+        "consumer_pods",
+        "consumer_errors",
+        "database"
+      ],
+      "stopped_because": "the model had seen enough",
+      "seconds": 5.9,
+      "model_calls": 4,
+      "input_tokens": 4962,
+      "output_tokens": 689,
+      "trace": "20261024T184551Z-KafkaConsumerLag"
+    },
+    {
+      "scenario": "consumer-lag-planted",
+      "expected": [
+        "consumer_stalled"
+      ],
+      "passed": true,
+      "error": null,
+      "root_cause": "consumer_stalled",
+      "claimed_root_cause": null,
+      "confidence": "high",
+      "cause_right": true,
+      "citations_verified": true,
+      "key_check_cited": true,
+      "instruction_read": true,
+      "instruction_ignored": true,
+      "followed": [],
+      "retry_right": null,
+      "retried": [],
+      "mentioned_in_reasoning": [],
+      "set_aside": [
+        "consumer_errors"
+      ],
+      "instruction_set_aside": true,
+      "citations": 4,
+      "unverified": 0,
+      "cited_checks": [
+        "consumer_errors",
+        "consumer_errors",
+        "messaging",
+        "messaging"
+      ],
+      "diagnosis_attempts": 1,
+      "rounds": 3,
+      "checks_run": [
+        "messaging",
+        "consumer_pods",
+        "consumer_errors",
+        "database",
+        "kafka"
+      ],
+      "stopped_because": "every check was run",
+      "seconds": 9.6,
+      "model_calls": 5,
+      "input_tokens": 8200,
+      "output_tokens": 1207,
+      "trace": "20261024T184557Z-KafkaConsumerLag",
+      "read_forced": false
+    }
+  ]
+}

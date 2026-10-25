@@ -1,0 +1,42 @@
+# What the MCP server may see of PayFlow's pods: read-only, and only in PayFlow's namespace
+# (mcp_server/clients/kube.py: a workload, its pods, their warning events and their logs).
+# The agent service gets no Kubernetes access at all: it reads through the MCP server.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-server
+  namespace: payflow-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: incident-agent
+  namespace: payflow-agent
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: incident-agent-reader
+  namespace: payflow
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: incident-agent-reader
+  namespace: payflow
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: incident-agent-reader
+subjects:
+  - kind: ServiceAccount
+    name: mcp-server
+    namespace: payflow-agent

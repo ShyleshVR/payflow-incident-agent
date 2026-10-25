@@ -1,0 +1,19 @@
+# The incident agent in PayFlow's cluster: its own namespace (payflow-agent), the MCP server and the
+# agent service, both from one image (deploy/Dockerfile). The model stays on the host, on its GPU.
+# Applied by scripts/k8s-deploy.sh, which builds the image and makes the two Secrets from .env first.
+#
+# No `namespace:` here on purpose: the MCP server's read-only Role and its binding belong in
+# PayFlow's namespace (payflow), everything else in payflow-agent; each file says which.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - mcp-server.yaml
+  - agent.yaml
+  - network-policy.yaml
+
+labels:
+  - pairs: { app.kubernetes.io/part-of: payflow-incident-agent }
+    includeSelectors: false

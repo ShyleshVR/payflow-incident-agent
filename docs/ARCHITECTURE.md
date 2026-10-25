@@ -5,14 +5,73 @@
 | Piece | Runs | What it does |
 |---|---|---|
 | **Model server** | llama.cpp's `llama-server`, Vulkan, on this machine's GPU (`scripts/start-llm.ps1`) | Answers the agent's questions. OpenAI-compatible API on `127.0.0.1:8090`. gpt-oss-20b by default |
-| **MCP server** | `python -m mcp_server.server`, `127.0.0.1:8091` | The agent's view of PayFlow: twelve read-only tools |
-| **Agent service** | `payflow-agent serve`, `127.0.0.1:8092` | Takes Alertmanager's alerts, queues investigations, waits for decisions, carries out approved saga retries and reconciliation reruns |
+| **MCP server** | a pod in the cluster (namespace `payflow-agent`), port 8091; or `python -m mcp_server.server` on this machine | The agent's view of PayFlow: twelve read-only tools |
+| **Agent service** | a pod in the cluster, port 8092 published on this machine; or `payflow-agent serve` | Takes Alertmanager's alerts, queues investigations, waits for decisions, carries out approved saga retries and reconciliation reruns |
 | **Workflow** | in the service (or `payflow-agent investigate`) | One investigation: a LangGraph graph whose steps are mostly code, with the model making two kinds of choices |
-| **PayFlow** | Docker Desktop's Kubernetes | Sends every alert to the agent (the `local-agent` overlay), and answers its checks |
+| **PayFlow** | Docker Desktop's Kubernetes (namespace `payflow`) | Sends every alert to the agent (the `local-agent` overlay), and answers its checks |
 
-Everything runs on one machine. Docker Desktop lets pods reach a program on the host at
-`host.docker.internal` even when it listens only on 127.0.0.1, so none of the agent's ports is
-open to the network.
+Everything runs on one machine. The model stays outside the cluster because Docker Desktop cannot
+give a container this AMD GPU; the pods reach it at `host.docker.internal`, which Docker Desktop
+routes to this machine even though the model server listens only on 127.0.0.1. No port of the
+agent's is open to the network: the service's is published on this machine only.
+
+## In the cluster
+
+`scripts/k8s-deploy.sh up` builds one image (`deploy/Dockerfile`: Python 3.13, the code and the
+runbooks, the dependency versions of `constraints.txt`, a non-root user) and applies `deploy/k8s`:
+
+```
+namespace payflow-agent                                  namespace payflow
+┌───────────────────────────────────────────┐            ┌──────────────────────────────────┐
+│ incident-agent (1 replica, Recreate)      │  alerts    │ Alertmanager                     │
+│   payflow-agent serve                     │◀───────────│   → incident-agent.payflow-agent │
+│   volume incident-agent-data (/data):     │            │       .svc:8092/alerts, token    │
+│   the database, paused workflows, traces  │  operator  │ api-gateway → payment, payout,   │
+│   Secret: alerts' token, operator secret  │───────────▶│   reconciliation (after approval)│
+│        │ MCP                              │            │ Prometheus, Alertmanager         │
+│        ▼                                  │  reads     │ pods, events, logs (Role:        │
+│ mcp-server (1 replica)                    │───────────▶│   get/list, read-only)           │
+│   python -m mcp_server.server             │            └──────────────────────────────────┘
+│   ServiceAccount mcp-server, Secret: its  │
+│   read-only client secret                 │──▶ host.docker.internal:8090 (the model, on the GPU)
+└───────────────────────────────────────────┘    (from incident-agent)
+```
+
+What each piece may do is what it needs and no more:
+
+- **The MCP server** holds PayFlow's read-only client and a Role in PayFlow's namespace that can
+  get and list pods, their logs and events, deployments and stateful sets. It never sees the
+  operator secret (its Secret has only its own key). A NetworkPolicy lets only the agent's pods
+  call it (where the cluster enforces NetworkPolicies; Docker Desktop's does not).
+- **The agent service** has no Kubernetes access at all (no ServiceAccount token mounted); it reads
+  through the MCP server and acts only through PayFlow's API, with the operator login, after an
+  approval. One replica with `Recreate`: its state is SQLite, which one process must own.
+- **Both** run as a non-root user with a read-only root filesystem, no capabilities, and memory
+  limits; the agent writes only to its volume and `/tmp`.
+
+PayFlow's Alertmanager always sends to `incident-agent.payflow-agent.svc.cluster.local:8092`.
+`k8s-deploy.sh up` makes that the agent's pod; `k8s-deploy.sh host` makes it an ExternalName for
+`host.docker.internal`, for running the agent on this machine while changing it, and scales the
+pods to zero (their volume is kept). So PayFlow does not change between the two.
+
+Tested end to end in the cluster on 2026-10-24, from real alerts through Alertmanager to the
+agent's pod:
+- **The ledger's database login locked under traffic:** `KafkaConsumerLag`, diagnosed
+  `consumer_stalled`. This is the set's recording now.
+- **Three manual captures parked during a processor outage, twice:** `SagaRequiresAttention`,
+  `processor_no_answer`, with the three to retry. Each time the proposal was approved from this
+  machine's CLI, and the pod retried all three with its operator login; all three COMPLETED,
+  and the fault script found nothing left parked.
+
+The command line on this machine talks to the service on port 8092 either way. Reports and traces
+live with the service, so `payflow-agent show <n>` asks the service for them
+(`GET /investigations/{n}`, `GET /investigations/{n}/trace`).
+
+CI (`.github/workflows/ci.yml`) runs ruff and the tests (which replay every scenario set with the
+scripted model and check every derived recording against its rules), builds the image and
+smoke-tests it, validates the manifests with kubeconform, and checks the shell scripts with
+shellcheck. The real model's scores need the GPU and come from `payflow-agent eval` on this
+machine.
 
 ## The tools
 

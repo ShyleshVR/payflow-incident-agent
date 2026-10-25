@@ -71,7 +71,7 @@ every step and what to do when something fails: [docs/SETUP.md](docs/SETUP.md). 
 
 Requirements: Windows with a GPU llama.cpp's Vulkan build supports (16 GB of video memory for
 the default model), Python 3.12+, and PayFlow running on Docker Desktop's Kubernetes (its
-`scripts/k8s-up.sh`, branch `feature/incident-agent-access` or later).
+`scripts/k8s-up.sh`, branch `feature/agent-phase-6` until it is merged).
 
 1. **The model.** Download llama.cpp's Windows Vulkan build into `D:\llm\llama.cpp\<build>\` and
    `gpt-oss-20b-MXFP4.gguf` (ggml-org/gpt-oss-20b-GGUF, 12.1 GB) into `D:\llm\models\`
@@ -97,23 +97,29 @@ the default model), Python 3.12+, and PayFlow running on Docker Desktop's Kubern
    .venv\Scripts\python scripts\write_env.py
    ```
 
-4. **The MCP server**, the agent's read-only view of PayFlow (Prometheus, Alertmanager,
-   Kubernetes, PayFlow's API):
+4. **Deploy it** into PayFlow's cluster (Git Bash): the MCP server (the agent's read-only view of
+   PayFlow) and the agent service, in their own namespace, from one image; the model stays on
+   this machine's GPU.
 
-   ```powershell
-   .venv\Scripts\python -m mcp_server.server     # http://127.0.0.1:8091/mcp
+   ```bash
+   scripts/k8s-deploy.sh up       # builds the image, makes the Secrets from .env, applies deploy/k8s
    ```
 
 ## Running it
 
-As a service, investigating every alert PayFlow sends:
+Deployed, the service investigates every alert PayFlow sends, and answers on this machine's port
+8092:
 
 ```powershell
-payflow-agent serve                         # http://127.0.0.1:8092 (Alertmanager reaches it from the cluster)
 payflow-agent pending                       # proposals waiting for your decision
+payflow-agent show 4                        # investigation 4's report (--trace: its full record)
 payflow-agent approve 4 --note "processor team contacted"
 payflow-agent reject 4 --reason "it recovered by itself"
 ```
+
+For development, the same two programs run on this machine instead
+(`scripts/k8s-deploy.sh host`, then `python -m mcp_server.server` and `payflow-agent serve`):
+[docs/SETUP.md](docs/SETUP.md#5-or-the-agent-on-this-machine-development).
 
 Approving a retry list answers at once; the service then checks and retries each saga on it, one
 at a time, and watches them for up to 5 minutes. The report says what became of each.
@@ -123,7 +129,7 @@ By hand, without the service:
 ```powershell
 payflow-agent investigate ProcessorCircuitOpen     # the alert must be firing now
 payflow-agent list                                 # past investigations
-payflow-agent show latest                          # a report (latest, an id, or a trace file)
+payflow-agent show latest                          # a report (latest, a trace id, or a trace file)
 payflow-agent investigate --replay runs\<id>.json  # again, from what an investigation recorded
 ```
 
@@ -162,7 +168,7 @@ Environment variables, or lines in `.env`:
 | `MCP_URL` | `http://127.0.0.1:8091/mcp` | the MCP server |
 | `AGENT_HOST`, `AGENT_PORT` | `127.0.0.1`, `8092` | where the service listens |
 | `AGENT_TOKEN` | none | required on every request to the service when set (`write_env.py` sets it) |
-| `AGENT_DB`, `AGENT_CHECKPOINTS`, `RUNS_DIR` | under `runs\` | the service's records, paused workflows, traces |
+| `AGENT_DB`, `AGENT_CHECKPOINTS`, `RUNS_DIR` | under `runs\` (in the cluster: `/data`, the agent's volume) | the service's records, paused workflows, traces |
 | `PAYFLOW_URL`, `PAYFLOW_CLIENT_SECRET` | `http://localhost`, from `.env` | PayFlow's API, for the MCP server (read-only login) |
 | `PAYFLOW_OPERATOR_CLIENT_SECRET` | from `.env` | the agent's second login, which can only retry sagas; the service alone uses it, the MCP server never loads it |
 | `PROMETHEUS_URL`, `ALERTMANAGER_URL` | `localhost:9090`, `:9093` | for the MCP server |
@@ -177,6 +183,9 @@ Environment variables, or lines in `.env`:
 | `runbooks/` | one per alert: causes, checks, the rules a diagnosis must meet, proposals |
 | `cli/` | `payflow-agent` |
 | `evals/` | the exam: scenarios, recordings, the scripts that break PayFlow to record them, results |
-| `scripts/` | starting the model server, writing `.env` |
-| `tests/` | 352 tests, with a scripted model: no GPU needed (`.venv\Scripts\python -m pytest`) |
+| `deploy/` | the image (`Dockerfile`) and the cluster's manifests (`k8s/`: namespace, read-only RBAC, the two deployments, the agent's volume; `k8s-host/`: alerts to this machine instead) |
+| `scripts/` | starting the model server, writing `.env`, deploying (`k8s-deploy.sh up / host / status`) |
+| `tests/` | 365 tests, with a scripted model: no GPU needed (`.venv\Scripts\python -m pytest`) |
+| `.github/workflows/ci.yml` | CI: ruff, the tests (every scenario set replayed with the scripted model), the image built and smoke-tested, the manifests validated, the scripts checked |
+| `constraints.txt` | the exact versions tested, used by the image and CI |
 | `docs/` | [SETUP](docs/SETUP.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [EVALS](docs/EVALS.md), [DECISIONS](docs/DECISIONS.md) |

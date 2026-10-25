@@ -12,17 +12,8 @@
           "arguments": {},
           "is_error": false,
           "result": {
-            "count": 2,
+            "count": 1,
             "alerts": [
-              {
-                "alert": "ServiceDown",
-                "severity": "critical",
-                "about": {
-                  "job": "ledger-service"
-                },
-                "firing_for_minutes": 4,
-                "summary": "ledger-service has no healthy instance"
-              },
               {
                 "alert": "KafkaConsumerLag",
                 "severity": "warning",
@@ -31,7 +22,7 @@
                   "topic": "ledger-commands"
                 },
                 "firing_for_minutes": 0,
-                "summary": "ledger-service is 7139 messages behind on ledger-commands"
+                "summary": "ledger-service is 7031 messages behind on ledger-commands"
               }
             ]
           }
@@ -55,8 +46,8 @@
               {
                 "group": "ledger-service",
                 "topic": "ledger-commands",
-                "lag": 7516,
-                "change": 7516,
+                "lag": 7403,
+                "change": 7403,
                 "consumers": 12
               },
               {
@@ -105,8 +96,8 @@
               },
               {
                 "service": "payment-service",
-                "pending": 5,
-                "change": 5,
+                "pending": 4,
+                "change": 4,
                 "oldest_pending_seconds": 0,
                 "parked": 0
               },
@@ -125,7 +116,7 @@
               }
             ],
             "concerns": [
-              "ledger-service is 7516 messages behind on ledger-commands (the alert fires above 500), up from 0 15 minutes ago",
+              "ledger-service is 7403 messages behind on ledger-commands (the alert fires above 500), up from 0 15 minutes ago",
               "ledger-service reports no outbox metrics: it may be down",
               "1 message(s) arrived in ledger-commands.DLT in the last 15 minutes: a consumer gave up on them"
             ]
@@ -160,14 +151,14 @@
             "minutes": 15,
             "pods_read": 2,
             "error_lines": 179,
-            "warning_lines": 73,
+            "warning_lines": 66,
             "groups": [
               {
                 "level": "ERROR",
                 "logger": "o.h.engine.jdbc.spi.SqlExceptionHelper",
-                "message": "HikariPool-1 - Connection is not available, request timed out after 30000ms (total=0, active=0, idle=0, waiting=27)",
+                "message": "FATAL: role \"ledger_user\" is not permitted to log in",
                 "cause": null,
-                "count": 66,
+                "count": 62,
                 "pods": 2,
                 "last_seen_minutes_ago": 0,
                 "in_crashed_container": false
@@ -175,9 +166,9 @@
               {
                 "level": "ERROR",
                 "logger": "o.h.engine.jdbc.spi.SqlExceptionHelper",
-                "message": "FATAL: role \"ledger_user\" is not permitted to log in",
+                "message": "HikariPool-1 - Connection is not available, request timed out after 30000ms (total=0, active=0, idle=0, waiting=23)",
                 "cause": null,
-                "count": 66,
+                "count": 60,
                 "pods": 2,
                 "last_seen_minutes_ago": 0,
                 "in_crashed_container": false
@@ -187,8 +178,28 @@
                 "logger": "c.s.l.exception.GlobalExceptionHandler",
                 "message": "Unhandled exception",
                 "cause": "org.postgresql.util.PSQLException: FATAL: role \"ledger_user\" is not permitted to log in",
-                "count": 43,
+                "count": 46,
                 "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "ERROR",
+                "logger": "i.o.exporter.internal.http.HttpExporter",
+                "message": "Failed to export spans. The request could not be executed. Full error message: Failed to connect to jaeger/10.96.62.200:4318",
+                "cause": "java.net.ConnectException: Connection refused",
+                "count": 5,
+                "pods": 2,
+                "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "ERROR",
+                "logger": "o.h.engine.jdbc.spi.SqlExceptionHelper",
+                "message": "HikariPool-1 - Connection is not available, request timed out after 30001ms (total=0, active=0, idle=0, waiting=23)",
+                "cause": null,
+                "count": 2,
+                "pods": 1,
                 "last_seen_minutes_ago": 0,
                 "in_crashed_container": false
               },
@@ -197,9 +208,19 @@
                 "logger": "o.s.s.s.TaskUtils$LoggingErrorHandler",
                 "message": "Unexpected error occurred in scheduled task",
                 "cause": "org.postgresql.util.PSQLException: FATAL: role \"ledger_user\" is not permitted to log in",
-                "count": 3,
+                "count": 2,
                 "pods": 2,
                 "last_seen_minutes_ago": 0,
+                "in_crashed_container": false
+              },
+              {
+                "level": "ERROR",
+                "logger": "i.o.exporter.internal.http.HttpExporter",
+                "message": "Failed to export spans. The request could not be executed. Full error message: timeout",
+                "cause": "java.io.IOException: Canceled",
+                "count": 1,
+                "pods": 1,
+                "last_seen_minutes_ago": 1,
                 "in_crashed_container": false
               },
               {
@@ -217,17 +238,7 @@
                 "logger": "o.h.engine.jdbc.spi.SqlExceptionHelper",
                 "message": "SQL Error: 0, SQLState: 28000",
                 "cause": null,
-                "count": 66,
-                "pods": 2,
-                "last_seen_minutes_ago": 0,
-                "in_crashed_container": false
-              },
-              {
-                "level": "WARN",
-                "logger": ".m.m.a.ExceptionHandlerExceptionResolver",
-                "message": "Failure in @ExceptionHandler com.shylesh.ledger_service.exception.GlobalExceptionHandler#handleUnexpected(Exception)",
-                "cause": "org.springframework.http.converter.HttpMessageNotWritableException: No converter for [class com.shylesh.ledger_service.dto.ApiErrorResponse] with preset Content-Type 'application/openmetrics-text;version=1.0.0;charset=utf-8'",
-                "count": 5,
+                "count": 62,
                 "pods": 2,
                 "last_seen_minutes_ago": 0,
                 "in_crashed_container": false
@@ -235,7 +246,7 @@
               {
                 "level": "WARN",
                 "logger": "com.zaxxer.hikari.pool.PoolBase",
-                "message": "HikariPool-1 - Pool is empty, failed to create/setup connection (30c42c34-709d-4a97-9842-caeb020625da)",
+                "message": "HikariPool-1 - Pool is empty, failed to create/setup connection (8400d63f-2b55-4006-9cee-e39fe94d40c2)",
                 "cause": "org.postgresql.util.PSQLException: FATAL: role \"ledger_user\" is not permitted to log in",
                 "count": 2,
                 "pods": 2,
@@ -244,7 +255,8 @@
               }
             ],
             "concerns": [
-              "179 ERROR line(s) of 5 kind(s) in the last 15 minutes"
+              "179 ERROR line(s) of 8 kind(s) in the last 15 minutes",
+              "11 different kinds of line; only the first 10 are listed"
             ]
           }
         }
@@ -273,7 +285,7 @@
       ]
     },
     {
-      "step": "record_unchosen",
+      "step": "gather",
       "tool_calls": [
         {
           "tool": "get_pod_status",

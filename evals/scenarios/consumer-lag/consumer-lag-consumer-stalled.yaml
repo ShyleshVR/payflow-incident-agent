@@ -3,12 +3,14 @@ alert: KafkaConsumerLag
 recording: KafkaConsumerLag-consumer-stalled.json
 description: >
   The ledger's database login locked under payment traffic: its pods run and stay ready, but every
-  command fails on the database, so the lag on ledger-commands grows. Its metrics endpoint fails
-  too (its outbox gauges query the database), so Prometheus counts it as down and ServiceDown
-  fires beside this alert.
+  command fails on the database, so the lag on ledger-commands grows. Its outbox metrics are
+  unknown meanwhile (it cannot read them), so the messaging check says it reports none.
 caused_by: >
-  Recorded live on 2026-10-24 by the agent's service (evals/faults/traffic.sh 14 5, then
-  evals/faults/database-login-locked.sh start ledger_user).
+  Recorded live on 2026-10-24 at 18:37 UTC by the agent deployed in the cluster (phase 7), on
+  PayFlow with the background-refreshed gauges (evals/faults/traffic.sh 14 5, then
+  evals/faults/database-login-locked.sh start ledger_user). The two earlier recordings of this
+  fault (11:50, when the ledger's metrics endpoint failed and ServiceDown fired beside it; 17:52,
+  when a stale gauge raised OutboxBacklog) were replaced as PayFlow was fixed.
 cleaned_up_by: evals/faults/database-login-locked.sh stop ledger_user
 expected:
   root_causes: [consumer_stalled]

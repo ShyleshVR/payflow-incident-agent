@@ -1,0 +1,66 @@
+# The read-only tools (python -m mcp_server.server), for the agent service only (network-policy.yaml).
+# It reads PayFlow through its gateway as the service client "incident-agent" (audit scopes),
+# Prometheus and Alertmanager directly, and Kubernetes as its ServiceAccount (rbac.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  namespace: payflow-agent
+  labels: { app: mcp-server }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mcp-server }
+  template:
+    metadata:
+      labels: { app: mcp-server }
+    spec:
+      serviceAccountName: mcp-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mcp-server
+          image: payflow-incident-agent:local
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, mcp_server.server]
+          ports:
+            - { name: mcp, containerPort: 8091 }
+          env:
+            - { name: MCP_HOST, value: 0.0.0.0 }
+            - { name: MCP_PORT, value: "8091" }
+            - { name: PAYFLOW_NAMESPACE, value: payflow }
+            - { name: PAYFLOW_URL, value: http://api-gateway.payflow.svc.cluster.local }
+            - { name: PROMETHEUS_URL, value: http://prometheus.payflow.svc.cluster.local:9090 }
+            - { name: ALERTMANAGER_URL, value: http://alertmanager.payflow.svc.cluster.local:9093 }
+            - name: PAYFLOW_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: mcp-server, key: PAYFLOW_CLIENT_SECRET } }
+          readinessProbe:
+            tcpSocket: { port: mcp }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: mcp }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+  namespace: payflow-agent
+spec:
+  selector: { app: mcp-server }
+  ports:
+    - { name: mcp, port: 8091, targetPort: mcp }

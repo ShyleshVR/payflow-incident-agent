@@ -1,0 +1,17 @@
+# Only code, runbooks and the dependency lists go into the image (deploy/Dockerfile).
+.git
+.venv
+.env
+runs
+spike
+docs
+tests
+evals/fixtures
+evals/results
+evals/scenarios
+evals/faults
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+*.egg-info

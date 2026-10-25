@@ -217,6 +217,21 @@ def test_the_command_line_lists_approves_and_rejects_through_the_service(tmp_pat
         payflow_agent.main(["reject", "1"])                                      # a reason is required
 
 
+def test_the_report_and_the_trace_of_an_investigation_come_from_the_service(tmp_path, monkeypatch, capsys):
+    # in the cluster the traces are on the service's own volume: the command line asks for them by number
+    agent = waiting_service(tmp_path)
+    monkeypatch.setattr(payflow_agent, "_agent_client", lambda: TestClient(create_app(agent, tmp_path)))
+
+    assert payflow_agent.main(["show", "1"]) == payflow_agent.DONE
+    assert capsys.readouterr().out.startswith("# ProcessorCircuitOpen: processor_outage")
+    assert payflow_agent.main(["show", "1", "--trace"]) == payflow_agent.DONE
+    assert json.loads(capsys.readouterr().out)["alert_name"] == "ProcessorCircuitOpen"
+    assert payflow_agent.main(["show", "9"]) == payflow_agent.FAILED
+    assert "No investigation 9" in capsys.readouterr().out
+    with TestClient(create_app(agent, tmp_path)) as client:
+        assert client.get("/investigations/9/trace").status_code == 404
+
+
 def test_the_command_line_says_so_when_the_service_is_not_running(monkeypatch, capsys):
     def refused(request):
         raise httpx.ConnectError("refused", request=request)

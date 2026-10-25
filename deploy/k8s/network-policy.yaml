@@ -1,0 +1,18 @@
+# The MCP server has no login of its own and holds PayFlow's read-only audit client: only the agent
+# service may call it. (Enforced where the cluster's network plugin supports NetworkPolicy;
+# Docker Desktop's does not, so there it documents the intent.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-from-the-agent-only
+  namespace: payflow-agent
+spec:
+  podSelector:
+    matchLabels: { app: mcp-server }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: incident-agent }
+      ports:
+        - { port: 8091 }

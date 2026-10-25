@@ -1,0 +1,21 @@
+# For development: the agent service runs on this machine (payflow-agent serve), not in the
+# cluster. PayFlow's Alertmanager always sends to incident-agent.payflow-agent.svc.cluster.local:8092;
+# here that name points at the host (Docker Desktop's host.docker.internal), where
+# `payflow-agent serve` listens. scripts/k8s-deploy.sh host applies this, and scales the in-cluster
+# agent to zero (its volume, with its investigations, is kept).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payflow-agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-agent
+  namespace: payflow-agent
+  labels: { app.kubernetes.io/part-of: payflow-incident-agent }
+spec:
+  type: ExternalName
+  externalName: host.docker.internal
+  ports:
+    - { name: http, port: 8092 }

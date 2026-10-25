@@ -3,6 +3,7 @@
     POST /alerts                        Alertmanager's webhook: each new firing starts one investigation
     GET  /investigations[?status=...]   the most recent investigations, newest first
     GET  /investigations/{id}           one investigation: its state, firings, and report when there is one
+    GET  /investigations/{id}/trace     its full trace (JSON), the record a report is made from
     POST /investigations/{id}/decision  approve or reject its proposal: {"decision": "approve" | "reject",
                                         "by": "...", "note": "..."} (a rejection needs a note). An
                                         approval is answered at once and carried out in the background
@@ -86,6 +87,14 @@ def create_app(service: Service, runs_dir: Path, token: str | None = None, resou
             if path.is_file():
                 detail["report"] = report.render(traces.load(path))
         return detail
+
+    @app.get("/investigations/{investigation_id}/trace")
+    async def trace(investigation_id: int) -> dict:
+        found = service.store.investigation(investigation_id)
+        path = runs_dir / f"{found['trace_id']}.json" if found and found["trace_id"] else None
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail=f"no trace for investigation {investigation_id}")
+        return traces.load(path)
 
     return app
 

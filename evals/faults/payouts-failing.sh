@@ -34,7 +34,7 @@ case "${1:-}" in
         -d "{\"amount\":\"$((30 + n)).00\",\"currency\":\"USD\",\"paymentMethod\":\"pm_card_visa\"}"
     done
     # settled: captured and booked to the merchant's balance by the saga
-    for i in $(seq 1 30); do
+    for _ in $(seq 1 30); do
       payable=$(curl -s -m 15 "http://localhost/api/v1/payouts/balance?currency=USD" -H "Authorization: Bearer $bearer" | json "d['payable']")
       python -c "import sys; sys.exit(0 if float('$payable') >= 90 else 1)" 2>/dev/null && break
       sleep 2

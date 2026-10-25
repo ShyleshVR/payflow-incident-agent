@@ -221,8 +221,17 @@ every scrape (each waits for a connection that never comes, and the error handle
 its JSON answer to a metrics request). Prometheus then counts the ledger as down, so `ServiceDown`
 and `InstanceDown` fire for a service whose pods are alive, and the agent's messaging check says
 the ledger reports no outbox metrics. The fix belongs in PayFlow (gauges that read a value kept
-up to date in the background, so a scrape never waits on the database); the stalled-consumer
-recording shows the behaviour as it is.
+up to date in the background, so a scrape never waits on the database).
+
+Two of the three were then fixed in PayFlow, as a change of their own, not inside the evals
+(2026-10-24): `KafkaUnreachable` has `or absent(up{job="kafka-exporter"})`, with a promtool test,
+and the gauges of the ledger, payment-service and payout-service are refreshed every 10 seconds
+in the background, and are unknown (NaN) while the database cannot be read. (The first version
+kept the last values, and the end-to-end test caught it: one reply in flight when the database went
+away aged into an `OutboxBacklog` for the ledger.) With the ledger's login locked for 3.5 minutes after the fix, Prometheus kept
+seeing it up and nothing but the real symptom fired; the stalled-consumer recording was made again
+on the fixed PayFlow. The unready-pod case is left as it is: a pod that runs but is not ready is
+what `InstanceDown` and the service's own errors show.
 
 ## 25. A derived log line is one PayFlow could write
 
@@ -266,3 +275,38 @@ part must still be found in the result of the check the quote names, and a part 
 is checked without its cut word.
 *Turned down:* matching quotes loosely (by similarity): a made-up number or a sentence from
 another check would then pass.
+
+## 29. In the cluster: one image, two pods, the model on the host
+
+The MCP server and the agent service run in PayFlow's cluster, in their own namespace, from one
+image (two commands); the model stays on the host. Docker Desktop cannot give a container this AMD
+GPU, and the model is one URL (`LLM_URL`), so a GPU node could take it later without other
+changes. Each pod gets only what it needs: the MCP server a read-only Role in PayFlow's namespace
+and the read-only client; the agent service no Kubernetes access and the operator login. The
+service stays one replica with `Recreate` and a volume: its state is SQLite (investigations,
+LangGraph's checkpoints, traces), which one process must own. The CLI keeps working unchanged
+because the service is published on this machine's port 8092; reports now come from the service,
+which keeps the traces (`show <n>`).
+*Turned down:* two images (the same dependencies twice, for a few lines of difference); Postgres
+for the agent's state (more to run for one replica; SQLite already survives restarts); the model
+in a pod on the CPU (minutes per investigation instead of seconds).
+
+## 30. One name for the agent, wherever it runs
+
+PayFlow's Alertmanager sends to `incident-agent.payflow-agent.svc.cluster.local:8092` in every
+case. Deployed, that is the agent's Service; for development, `k8s-deploy.sh host` makes it an
+ExternalName for `host.docker.internal`, where `payflow-agent serve` runs. So PayFlow's overlays
+do not change when the agent moves, and moving it is one command.
+*Turned down:* a second PayFlow overlay per place the agent runs (two more overlays, with the
+Slack ones four, to keep in step).
+
+## 31. CI replays; the GPU scores
+
+CI runs ruff and the tests, builds and smoke-tests the image, validates the manifests and checks
+the shell scripts. The tests replay every scenario set with the scripted model and check every
+derived recording against its rules, so a broken runbook, recording or derivation fails CI. The
+real model's scores need the GPU, so they are made on the machine that has one and recorded in
+`evals/results` and EVALS.md. The image and CI install the versions in `constraints.txt` (the
+development environment's, taken with `pip freeze`), so all three run the same code.
+*Turned down:* a GPU runner (cost, and the scores already repeat exactly on one machine);
+unpinned dependencies in the image (a library release could change it between two builds).
